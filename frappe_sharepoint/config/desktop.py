@@ -4,7 +4,7 @@ def get_data():
 	return [
 		{
 			"module_name": "SharePoint",
-			"category": "Modules",
+			"category": "Places",
 			"type": "module",
 			"label": _("SharePoint"),
 			"color": "#0078D4",
