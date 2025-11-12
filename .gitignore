@@ -1,7 +1,43 @@
-.DS_Store
+# Python
 *.pyc
-*.egg-info
+*.pyo
+*.pyd
+__pycache__/
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# IDE
+.vscode/
+.idea/
 *.swp
-tags
-frappe_m365/docs/current
+*.swo
+*~
+.DS_Store
+
+# Frappe specific
+*.compiled
 node_modules/
+*/public/js/*.min.js
+*/public/css/*.min.css
+
+# Logs
+*.log
+
+# Environment
+.env
+.venv
+env/
+venv/
+
+# Documentation
+docs/_build/
+docs/current/
+
+# Other
+tags
+.coverage
+htmlcov/

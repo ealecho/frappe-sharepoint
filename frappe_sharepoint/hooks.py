@@ -1,25 +1,25 @@
 from . import __version__ as app_version
 
-app_name = "frappe_m365"
-app_title = "Frappe M365"
-app_publisher = "aptitudetech"
-app_description = "Microdoft 365 Groups integration"
-app_email = "hello@aptitudetech.com"
+app_name = "frappe_sharepoint"
+app_title = "Frappe SharePoint"
+app_publisher = "Frappe Community"
+app_description = "Universal SharePoint file synchronization for Frappe/ERPNext"
+app_email = ""
 app_license = "MIT"
 
 # Includes in <head>
 # ------------------
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/frappe_m365/css/frappe_m365.css"
-app_include_js = "/assets/frappe_m365/js/frappe_m365.js"
+# app_include_css = "/assets/frappe_sharepoint/css/frappe_sharepoint.css"
+app_include_js = "/assets/frappe_sharepoint/js/frappe_sharepoint.js"
 
 # include js, css files in header of web template
-# web_include_css = "/assets/frappe_m365/css/frappe_m365.css"
-# web_include_js = "/assets/frappe_m365/js/frappe_m365.js"
+# web_include_css = "/assets/frappe_sharepoint/css/frappe_sharepoint.css"
+# web_include_js = "/assets/frappe_sharepoint/js/frappe_sharepoint.js"
 
 # include custom scss in every website theme (without file extension ".scss")
-# website_theme_scss = "frappe_m365/public/scss/website"
+# website_theme_scss = "frappe_sharepoint/public/scss/website"
 
 # include js, css files in header of web form
 # webform_include_js = {"doctype": "public/js/doctype.js"}
@@ -104,7 +104,7 @@ app_include_js = "/assets/frappe_m365/js/frappe_m365.js"
 
 doc_events = {
     "File":{
-		"after_insert": "frappe_m365.controllers.file_controller.file_upload",
+		"after_insert": "frappe_sharepoint.controllers.file_controller.file_upload",
 	}
 }
 
