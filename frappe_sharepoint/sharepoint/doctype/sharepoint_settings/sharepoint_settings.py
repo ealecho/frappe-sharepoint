@@ -6,6 +6,49 @@ from frappe import _
 from frappe.model.document import Document
 
 class SharePointSettings(Document):
+	def validate(self):
+		"""Validate settings before saving"""
+		self.validate_root_folder_path()
+	
+	def validate_root_folder_path(self):
+		"""Validate and sanitize root folder path"""
+		if self.root_folder_path:
+			# Strip leading and trailing whitespace
+			self.root_folder_path = self.root_folder_path.strip()
+			
+			# Remove leading and trailing slashes
+			self.root_folder_path = self.root_folder_path.strip('/')
+			
+			# If the path is now empty (was just "/"), clear it
+			if not self.root_folder_path:
+				self.root_folder_path = ""
+				return
+			
+			# Check for invalid characters in folder names
+			invalid_chars = ['\\', ':', '*', '?', '"', '<', '>', '|']
+			for char in invalid_chars:
+				if char in self.root_folder_path:
+					frappe.throw(
+						_("Root Folder Path contains invalid character: {0}").format(char),
+						title=_("Invalid Path")
+					)
+			
+			# Check for double slashes (invalid path)
+			if '//' in self.root_folder_path:
+				frappe.throw(
+					_("Root Folder Path cannot contain consecutive slashes (//)"),
+					title=_("Invalid Path")
+				)
+			
+			# Validate path segments (no empty segments between slashes)
+			segments = self.root_folder_path.split('/')
+			for segment in segments:
+				if not segment.strip():
+					frappe.throw(
+						_("Root Folder Path cannot have empty folder names"),
+						title=_("Invalid Path")
+					)
+	
 	@frappe.whitelist()
 	def test_connection(self):
 		"""Test connection to Microsoft Graph API with provided credentials"""
