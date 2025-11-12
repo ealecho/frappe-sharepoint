@@ -3,8 +3,12 @@ from frappe import _
 def get_data():
 	return [
 		{
-			"module_name": "Frappe M365",
+			"module_name": "SharePoint",
+			"category": "Modules",
 			"type": "module",
-			"label": _("Frappe M365")
+			"label": _("SharePoint"),
+			"color": "#0078D4",
+			"icon": "octicon octicon-cloud-upload",
+			"description": _("SharePoint file synchronization")
 		}
 	]

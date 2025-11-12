@@ -23,6 +23,82 @@ def trigger_sharepoint_upload(doctype=None, docname=None, filepath=None, filedoc
 	sharepoint.run_sharepoint_upload()
 
 
+def upload_document_bundle(doctype, docname, files):
+	"""
+	Upload multiple files (document PDF + attachments) to SharePoint
+	
+	Args:
+		doctype: Document type (e.g., "Expense Claim")
+		docname: Document name (e.g., "HR-EXP-2025-00033")
+		files: List of file dicts with keys: filepath, filename, is_temp
+		
+	Returns:
+		dict: Upload status with success flag and SharePoint folder URL
+	"""
+	try:
+		sharepoint = SharePoint(doctype=doctype, docname=docname, filepath=None, filedoc=None)
+		
+		# Build the folder structure first
+		target_folder_id = sharepoint.build_folder_structure()
+		
+		if not target_folder_id:
+			return {
+				'success': False,
+				'message': 'Could not determine target folder in SharePoint'
+			}
+		
+		# Upload each file
+		uploaded_count = 0
+		failed_files = []
+		
+		for file_info in files:
+			filepath = file_info.get('filepath')
+			filename = file_info.get('filename')
+			
+			if not filepath or not filename:
+				continue
+			
+			# Upload file with overwrite behavior
+			success = sharepoint.upload_file_to_folder(
+				target_folder_id=target_folder_id,
+				filepath=filepath,
+				filename=filename
+			)
+			
+			if success:
+				uploaded_count += 1
+				# Update File doc if this is an attachment
+				if file_info.get('file_doc'):
+					frappe.db.set_value("File", file_info['file_doc'], "uploaded_to_sharepoint", 1)
+			else:
+				failed_files.append(filename)
+		
+		# Get SharePoint folder URL
+		folder_url = sharepoint.get_folder_url(target_folder_id)
+		
+		if uploaded_count > 0:
+			return {
+				'success': True,
+				'uploaded_count': uploaded_count,
+				'failed_count': len(failed_files),
+				'folder_url': folder_url,
+				'message': f'Successfully uploaded {uploaded_count} file(s) to SharePoint'
+			}
+		else:
+			return {
+				'success': False,
+				'message': 'Failed to upload files to SharePoint',
+				'failed_files': failed_files
+			}
+			
+	except Exception as e:
+		frappe.log_error("Document Bundle Upload Error", str(e))
+		return {
+			'success': False,
+			'message': f'Error: {str(e)}'
+		}
+
+
 class SharePoint(object):
 	def __init__(self, **kwargs):
 		self.user = frappe.session.user
@@ -220,3 +296,66 @@ class SharePoint(object):
 				os.remove(self.filepath)
 		except Exception as e:
 			frappe.log_error("File remove error", str(e))
+	
+	def upload_file_to_folder(self, target_folder_id, filepath, filename):
+		'''
+			Upload a single file to a specific SharePoint folder
+			
+			Args:
+				target_folder_id: SharePoint folder ID
+				filepath: Local file path
+				filename: Name for the file in SharePoint
+				
+			Returns:
+				bool: True if upload successful, False otherwise
+		'''
+		try:
+			# Read file content
+			with open(filepath, 'rb') as f:
+				file_content = f.read()
+			
+			if not file_content:
+				frappe.log_error("SharePoint Upload Error", f"File {filename} is empty")
+				return False
+			
+			# Upload file with replace behavior
+			headers = get_request_header(self.settings)
+			headers.update({"Content-Type": "application/octet-stream"})
+			url = f'{self.base_url}/items/{target_folder_id}:/{filename}:/content'
+			
+			response = make_request('PUT', url, headers, file_content)
+			
+			if not response.ok:
+				frappe.log_error("SharePoint File Upload Error", f"File: {filename}, Error: {response.text}")
+				return False
+			
+			return True
+			
+		except Exception as e:
+			frappe.log_error("File Upload Error", f"File: {filename}, Error: {str(e)}")
+			return False
+	
+	def get_folder_url(self, folder_id):
+		'''
+			Get web URL for a SharePoint folder
+			
+			Args:
+				folder_id: SharePoint folder ID
+				
+			Returns:
+				str: Web URL to the folder or None
+		'''
+		try:
+			headers = get_request_header(self.settings)
+			url = f'{self.base_url}/items/{folder_id}'
+			
+			response = make_request('GET', url, headers, None)
+			
+			if response.ok:
+				return response.json().get('webUrl')
+			
+			return None
+			
+		except Exception as e:
+			frappe.log_error("Get Folder URL Error", str(e))
+			return None
