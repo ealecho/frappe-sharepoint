@@ -7,10 +7,11 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "oauth_authorization_section",
-  "connected_app",
-  "column_break_8",
-  "connected_user",
+  "azure_credentials_section",
+  "tenant_id",
+  "client_id",
+  "column_break_cred",
+  "client_secret",
   "endpoints_section",
   "graph_api_url",
   "sharepoint_settings_section",
@@ -26,31 +27,36 @@
  ],
  "fields": [
   {
-   "fieldname": "oauth_authorization_section",
+   "fieldname": "azure_credentials_section",
    "fieldtype": "Section Break",
-   "label": "OAuth Authorization"
+   "label": "Azure AD Credentials"
   },
   {
-   "fieldname": "connected_app",
-   "fieldtype": "Link",
+   "fieldname": "tenant_id",
+   "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Connected App",
-   "options": "Connected App",
+   "label": "Tenant ID",
    "reqd": 1,
-   "description": "Azure AD App Registration with SharePoint permissions"
+   "description": "Azure AD Tenant ID"
   },
   {
-   "fieldname": "column_break_8",
+   "fieldname": "client_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Client ID",
+   "reqd": 1,
+   "description": "Azure App Registration Client ID"
+  },
+  {
+   "fieldname": "column_break_cred",
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "connected_user",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Connected User",
-   "options": "User",
+   "fieldname": "client_secret",
+   "fieldtype": "Password",
+   "label": "Client Secret",
    "reqd": 1,
-   "description": "User for OAuth authentication"
+   "description": "Azure App Registration Client Secret"
   },
   {
    "fieldname": "endpoints_section",

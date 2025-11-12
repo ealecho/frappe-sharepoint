@@ -9,7 +9,7 @@ A universal SharePoint file synchronization solution for Frappe/ERPNext. This ap
 - **Universal SharePoint Integration**: Connect to any SharePoint site using your own Azure AD tenant
 - **Automatic File Sync**: Automatically upload files to SharePoint when they're attached to documents
 - **Flexible Folder Structure**: Choose between hierarchical (Module/DocType/Document) or flat folder organization
-- **OAuth2 Authentication**: Secure authentication using Frappe Connected Apps
+- **Simple Authentication**: Direct credential configuration with Azure AD App Registration
 - **Optional File Replacement**: Keep files on SharePoint only or maintain local copies
 - **Supports Frappe v13 and v14**
 
@@ -56,7 +56,7 @@ bench restart
 3. Configure your app:
    - **Name**: Frappe SharePoint Sync (or any name you prefer)
    - **Supported account types**: Accounts in this organizational directory only
-   - **Redirect URI**: Web → `https://[your-frappe-site]/api/method/frappe.integrations.oauth2.authorize_redirect`
+   - **Redirect URI**: Not required (leave blank)
 
 <img src="./app_registration.png" height="480">
 
@@ -67,54 +67,31 @@ bench restart
 5. Go to "Certificates & secrets" → Create a new client secret
    - Note down the **Value** (you won't be able to see it again)
 
-6. Go to "API permissions" → Add the following Microsoft Graph **Delegated** permissions:
+6. Go to "API permissions" → Add the following Microsoft Graph **Application** permissions:
    - `Files.ReadWrite.All`
-   - `Sites.Read.All` (or `Sites.ReadWrite.All`)
-   - `offline_access`
-   - `User.Read`
+   - `Sites.ReadWrite.All`
 
 7. Click "Grant admin consent" for your organization
 
-### 2. Configure Connected App in Frappe
+### 2. Configure SharePoint Settings
 
-1. Go to **Connected App** doctype in Frappe
-2. Create a new Connected App with these settings:
-   - **App Name**: Microsoft SharePoint
-   - **Provider**: Custom
-   - **Client ID**: [Application (client) ID from Azure]
-   - **Client Secret**: [Secret value from Azure]
-   - **Authorization URL**: `https://login.microsoftonline.com/[tenant-id]/oauth2/v2.0/authorize`
-   - **Token URL**: `https://login.microsoftonline.com/[tenant-id]/oauth2/v2.0/token`
-   - **Scopes**: `Files.ReadWrite.All Sites.Read.All offline_access User.Read`
-   - **Redirect URI**: `https://[your-frappe-site]/api/method/frappe.integrations.oauth2.authorize_redirect`
-
-3. Save the Connected App
-
-### 3. Authorize a User
-
-1. Click "Connect User" in the Connected App
-2. Select the user who will authenticate with Microsoft
-3. You'll be redirected to Microsoft login
-4. Grant the requested permissions
-5. You'll be redirected back to Frappe
-
-### 4. Configure SharePoint Settings
-
-1. Go to **SharePoint Settings** in Frappe
+1. Go to **SharePoint Settings** in ERPNext
 2. Fill in the following fields:
 
-   **OAuth Settings:**
-   - **Connected App**: Select the Connected App you created
-   - **Connected User**: Select the user you authorized
-   - **Graph API URL**: `https://graph.microsoft.com/v1.0` (default)
+   **Azure AD Credentials:**
+   - **Tenant ID**: Your Azure AD tenant ID
+   - **Client ID**: Your app registration client ID
+   - **Client Secret**: Your app registration client secret
+   - Click **Test Connection** to verify your credentials
 
    **SharePoint Configuration:**
+   - **Graph API URL**: `https://graph.microsoft.com/v1.0` (default)
+   - **Enable File Sync**: Check to enable automatic file upload
    - **SharePoint Site URL**: Full URL of your SharePoint site (e.g., `https://yourtenant.sharepoint.com/sites/YourSite`)
    - Click **Fetch SharePoint Details** button to automatically retrieve Site ID and Drive ID
-   - **Root Folder Path**: (Optional) Specify a root folder within the drive (e.g., `FrappeFiles`)
+   - **Root Folder Path**: (Optional) Specify a root folder within the drive (e.g., `/Frappe Files`)
 
-   **File Sync Settings:**
-   - **Enable File Sync**: Check to enable automatic file upload
+   **File Handling:**
    - **Replace File Link**: Check to replace local files with SharePoint links (saves local storage)
    - **Folder Structure**: Choose between:
      - `Module/DocType/Document`: Creates hierarchical folders
@@ -161,21 +138,21 @@ SharePoint Drive
 ### Files not uploading?
 
 1. Check that "Enable File Sync" is enabled in SharePoint Settings
-2. Verify the Connected User has a valid OAuth token
+2. Click "Test Connection" to verify your Azure AD credentials
 3. Check Error Log in Frappe for specific error messages
 4. Ensure the SharePoint Site ID and Drive ID are correctly fetched
 
 ### Permission errors?
 
-1. Verify all required Microsoft Graph permissions are granted
+1. Verify all required Microsoft Graph **Application** permissions are granted
 2. Ensure admin consent was granted in Azure AD
-3. Check that the Connected User has access to the SharePoint site
+3. Check that your Azure AD app has access to the SharePoint site
 
 ### Can't fetch SharePoint details?
 
 1. Verify the SharePoint Site URL is correct
-2. Check that the OAuth token is valid
-3. Ensure the user has access to the specified SharePoint site
+2. Click "Test Connection" to verify your credentials
+3. Ensure your Azure AD app has proper permissions
 
 ---
 

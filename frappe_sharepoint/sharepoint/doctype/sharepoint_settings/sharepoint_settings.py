@@ -1,4 +1,4 @@
-# Copyright (c) 2023, aptitudetech and contributors
+# Copyright (c) 2023, Frappe Community and contributors
 # For license information, please see license.txt
 
 import frappe
@@ -6,6 +6,32 @@ from frappe import _
 from frappe.model.document import Document
 
 class SharePointSettings(Document):
+	@frappe.whitelist()
+	def test_connection(self):
+		"""Test connection to Microsoft Graph API with provided credentials"""
+		try:
+			from frappe_sharepoint.utils import get_access_token, make_request
+			
+			# Get access token using credentials
+			access_token = get_access_token(self.tenant_id, self.client_id, self.get_password("client_secret"))
+			
+			if not access_token:
+				frappe.throw(_("Failed to authenticate. Please check your credentials."))
+			
+			# Test API connection
+			headers = {'Authorization': f'Bearer {access_token}'}
+			test_url = f"{self.graph_api_url}/sites/root"
+			response = make_request('GET', test_url, headers, None)
+			
+			if response and response.ok:
+				frappe.msgprint(_("Connection successful! Credentials are valid."), indicator='green')
+				return True
+			else:
+				frappe.throw(_("Connection failed. Please verify your credentials and permissions."))
+		except Exception as e:
+			frappe.log_error("SharePoint Connection Test Error", str(e))
+			frappe.throw(_("Connection test failed: {0}").format(str(e)))
+	
 	@frappe.whitelist()
 	def fetch_sharepoint_details(self):
 		"""Fetch SharePoint site and drive details from Graph API"""
