@@ -8,7 +8,7 @@
  "hide_custom": 0,
  "icon": "cloud",
  "idx": 0,
- "is_hidden": 0,
+ "is_hidden": 1,
  "label": "SharePoint",
  "links": [],
  "modified": "2023-03-29 09:22:21.776048",
