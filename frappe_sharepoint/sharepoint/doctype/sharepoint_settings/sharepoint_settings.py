@@ -4,6 +4,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
+from urllib.parse import urlparse
 
 class SharePointSettings(Document):
 	def validate(self):
@@ -179,3 +180,150 @@ class SharePointSettings(Document):
 		except Exception as e:
 			frappe.log_error("SharePoint Folders Fetch Error", str(e))
 			frappe.throw(_("Error fetching folders: {0}").format(str(e)))
+	
+	def parse_sharepoint_url(self, url):
+		"""
+		Parse SharePoint URL into hostname and site path
+		
+		Args:
+			url: SharePoint site URL (e.g., https://peasuk.sharepoint.com/sites/SmartOps)
+			
+		Returns:
+			tuple: (hostname, site_path) e.g., ("peasuk.sharepoint.com", "/sites/SmartOps")
+			
+		Raises:
+			frappe.ValidationError if URL format is invalid
+		"""
+		if not url:
+			frappe.throw(
+				_("SharePoint Site URL is required"),
+				title=_("Missing URL")
+			)
+		
+		# Parse the URL
+		parsed = urlparse(url.strip())
+		
+		# Validate hostname
+		hostname = parsed.netloc
+		if not hostname:
+			frappe.throw(
+				_("Invalid SharePoint URL format. Expected format: https://yourtenant.sharepoint.com/sites/YourSite"),
+				title=_("Invalid URL")
+			)
+		
+		if not hostname.endswith('.sharepoint.com'):
+			frappe.throw(
+				_("Invalid SharePoint URL. Hostname must end with .sharepoint.com. Expected format: https://yourtenant.sharepoint.com/sites/YourSite"),
+				title=_("Invalid URL")
+			)
+		
+		# Get site path
+		site_path = parsed.path.rstrip('/')
+		
+		# Validate site path - must have /sites/ or /teams/ prefix
+		if not site_path:
+			frappe.throw(
+				_("SharePoint Site URL must include a site path. Expected format: https://yourtenant.sharepoint.com/sites/YourSite"),
+				title=_("Invalid URL")
+			)
+		
+		if not (site_path.startswith('/sites/') or site_path.startswith('/teams/')):
+			frappe.throw(
+				_("SharePoint Site URL must include /sites/ or /teams/ in the path. Expected format: https://yourtenant.sharepoint.com/sites/YourSite"),
+				title=_("Invalid URL")
+			)
+		
+		# Validate that there's a site name after /sites/ or /teams/
+		path_parts = site_path.split('/')
+		if len(path_parts) < 3 or not path_parts[2]:
+			frappe.throw(
+				_("SharePoint Site URL must include a site name after /sites/ or /teams/. Expected format: https://yourtenant.sharepoint.com/sites/YourSite"),
+				title=_("Invalid URL")
+			)
+		
+		return hostname, site_path
+	
+	@frappe.whitelist()
+	def fetch_sharepoint_details(self):
+		"""
+		Fetch Site ID and available Drives from SharePoint Site URL.
+		Uses direct site lookup which only requires access to the specific site,
+		not the Sites.Read.All permission needed for site search.
+		
+		Returns:
+			dict: {
+				'site_id': str,
+				'site_name': str,
+				'drives': list of drive dicts
+			}
+		"""
+		try:
+			from frappe_sharepoint.utils import get_request_header, make_request
+			
+			# Parse and validate the SharePoint URL
+			hostname, site_path = self.parse_sharepoint_url(self.sharepoint_site_url)
+			
+			frappe.logger().info(f"[Fetch Details] Parsed URL - hostname: {hostname}, site_path: {site_path}")
+			
+			headers = get_request_header(self)
+			
+			# Step 1: Get site details using direct path lookup
+			# API: GET /sites/{hostname}:{site_path}
+			site_url = f"{self.graph_api_url}/sites/{hostname}:{site_path}"
+			frappe.logger().info(f"[Fetch Details] Fetching site from: {site_url}")
+			
+			response = make_request('GET', site_url, headers, None)
+			
+			if not response or not response.ok:
+				error_msg = response.text if response else "No response from server"
+				frappe.logger().error(f"[Fetch Details] Failed to fetch site: {error_msg}")
+				frappe.throw(
+					_("Failed to fetch SharePoint site details. Please verify the URL and your permissions. Error: {0}").format(error_msg),
+					title=_("Site Fetch Failed")
+				)
+			
+			site_data = response.json()
+			site_id = site_data.get('id')
+			site_name = site_data.get('displayName') or site_data.get('name')
+			
+			frappe.logger().info(f"[Fetch Details] Found site: {site_name} (ID: {site_id})")
+			
+			if not site_id:
+				frappe.throw(
+					_("Could not retrieve Site ID from SharePoint response"),
+					title=_("Invalid Response")
+				)
+			
+			# Step 2: Get available drives (document libraries) for the site
+			drives_url = f"{self.graph_api_url}/sites/{site_id}/drives"
+			frappe.logger().info(f"[Fetch Details] Fetching drives from: {drives_url}")
+			
+			drives_response = make_request('GET', drives_url, headers, None)
+			
+			drives = []
+			if drives_response and drives_response.ok:
+				drives_data = drives_response.json()
+				for drive in drives_data.get('value', []):
+					drives.append({
+						'id': drive.get('id'),
+						'name': drive.get('name'),
+						'description': drive.get('description', ''),
+						'driveType': drive.get('driveType'),
+						'webUrl': drive.get('webUrl')
+					})
+				frappe.logger().info(f"[Fetch Details] Found {len(drives)} drives")
+			else:
+				frappe.logger().warning(f"[Fetch Details] Could not fetch drives: {drives_response.text if drives_response else 'No response'}")
+			
+			return {
+				'site_id': site_id,
+				'site_name': site_name,
+				'drives': drives
+			}
+			
+		except frappe.ValidationError:
+			# Re-raise validation errors as-is
+			raise
+		except Exception as e:
+			frappe.log_error("SharePoint Fetch Details Error", str(e))
+			frappe.throw(_("Error fetching SharePoint details: {0}").format(str(e)))

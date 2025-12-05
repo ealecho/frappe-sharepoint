@@ -95,8 +95,7 @@
    "fieldname": "sharepoint_site_id",
    "fieldtype": "Data",
    "label": "SharePoint Site ID",
-   "read_only": 1,
-   "description": "Auto-fetched from SharePoint"
+   "description": "Auto-fetched using 'Fetch SharePoint Details' or enter manually"
   },
   {
    "fieldname": "column_break_sp1",

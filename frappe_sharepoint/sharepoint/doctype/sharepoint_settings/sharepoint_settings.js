@@ -21,17 +21,125 @@ frappe.ui.form.on('SharePoint Settings', {
 			});
 		}
 		
-		// Add Browse SharePoint Sites button
+		// Add Fetch SharePoint Details button (primary method - works with limited permissions)
+		if (frm.doc.enable_file_sync && frm.doc.sharepoint_site_url && 
+			frm.doc.tenant_id && frm.doc.client_id && frm.doc.client_secret) {
+			frm.add_custom_button(__('Fetch SharePoint Details'), function() {
+				frappe_sharepoint.fetch_details(frm);
+			}, __('SharePoint'));
+		}
+		
+		// Add Browse SharePoint Sites button (requires Sites.Read.All permission)
 		if (frm.doc.enable_file_sync && frm.doc.tenant_id && frm.doc.client_id && frm.doc.client_secret) {
 			frm.add_custom_button(__('Browse SharePoint Sites'), function() {
 				frappe_sharepoint.browse_sites(frm);
-			});
+			}, __('SharePoint'));
+		}
+	},
+	
+	// Clear stale Site ID and Drive ID when URL changes
+	sharepoint_site_url: function(frm) {
+		if (frm.doc.sharepoint_site_id || frm.doc.sharepoint_drive_id) {
+			frm.set_value('sharepoint_site_id', '');
+			frm.set_value('sharepoint_drive_id', '');
+			
+			frappe.show_alert({
+				message: __('Site URL changed. Please click "Fetch SharePoint Details" to update Site ID and Drive ID.'),
+				indicator: 'orange'
+			}, 7);
 		}
 	}
 });
 
 // SharePoint Browser functionality
 frappe_sharepoint = {
+	// Fetch SharePoint details from URL (works with limited permissions)
+	fetch_details: function(frm) {
+		frappe.call({
+			method: 'fetch_sharepoint_details',
+			doc: frm.doc,
+			freeze: true,
+			freeze_message: __('Fetching SharePoint details...'),
+			callback: function(r) {
+				if (r.message) {
+					let result = r.message;
+					
+					// Set the Site ID
+					frm.set_value('sharepoint_site_id', result.site_id);
+					
+					frappe.show_alert({
+						message: __('Found site: {0}', [result.site_name]),
+						indicator: 'green'
+					});
+					
+					// Show drive selector if drives were found
+					if (result.drives && result.drives.length > 0) {
+						frappe_sharepoint.show_drive_selector(frm, result.drives, result.site_name);
+					} else {
+						frappe.msgprint({
+							title: __('No Document Libraries Found'),
+							message: __('No document libraries were found for this site. You may need to enter the Drive ID manually.'),
+							indicator: 'orange'
+						});
+					}
+				}
+			},
+			error: function(r) {
+				// Error is already handled by the server-side throw
+			}
+		});
+	},
+	
+	// Show drive selection dialog with styled list UI
+	show_drive_selector: function(frm, drives, site_name) {
+		let selected_drive = null;
+		
+		let d = new frappe.ui.Dialog({
+			title: __('Select Document Library'),
+			fields: [
+				{
+					fieldtype: 'HTML',
+					fieldname: 'site_info',
+					options: `<div style="padding: 10px; background: #f8f9fa; border-radius: 4px; margin-bottom: 10px;">
+						<strong>Site:</strong> ${site_name}<br>
+						<small class="text-muted">Select a document library to use for file uploads</small>
+					</div>`
+				},
+				{
+					fieldtype: 'HTML',
+					fieldname: 'drives_list',
+					options: frappe_sharepoint.render_drives_list(drives)
+				}
+			],
+			primary_action_label: __('Select'),
+			primary_action: function() {
+				if (!selected_drive) {
+					frappe.msgprint(__('Please select a document library'));
+					return;
+				}
+				
+				frm.set_value('sharepoint_drive_id', selected_drive.id);
+				d.hide();
+				
+				frappe.show_alert({
+					message: __('SharePoint configuration updated successfully'),
+					indicator: 'green'
+				});
+			}
+		});
+		
+		d.show();
+		
+		// Attach click handlers for drive selection
+		setTimeout(function() {
+			d.$wrapper.find('.drive-item').on('click', function() {
+				d.$wrapper.find('.drive-item').removeClass('selected');
+				$(this).addClass('selected');
+				selected_drive = drives[$(this).data('index')];
+			});
+		}, 100);
+	},
+	
 	browse_sites: function(frm) {
 		let selected_site = null;
 		let selected_drive = null;
