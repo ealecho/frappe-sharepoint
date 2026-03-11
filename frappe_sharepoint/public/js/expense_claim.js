@@ -71,11 +71,13 @@ function upload_to_sharepoint(frm) {
 							}
 						});
 						
-						// Also show brief alert
-						frappe.show_alert({
-							message: __('Successfully uploaded to SharePoint'),
-							indicator: 'green'
-						}, 5);
+					// Also show brief alert with SharePoint link
+					frappe.show_alert({
+						message: folder_url
+							? __('Successfully uploaded to SharePoint. <a href="{0}" target="_blank" style="font-weight:bold;text-decoration:underline;">Open in SharePoint</a>', [folder_url])
+							: __('Successfully uploaded to SharePoint'),
+						indicator: 'green'
+					}, 10);
 					} else {
 						// Show error message
 						let error_msg = r.message && r.message.error 
