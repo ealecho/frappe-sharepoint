@@ -1,8 +1,18 @@
 import frappe
 from frappe import _
+from frappe.utils import add_to_date, now_datetime
 import os
 
 SETTINGS = "SharePoint Settings"
+RETRY_WINDOW_DAYS = 7
+
+# Frappe reads these attachments back from disk, they must stay local.
+# Emails (Communication) reference their inline images by local path
+ALWAYS_EXCLUDED_DOCTYPES = (
+	"Data Import", "Bank Statement Import", "Prepared Report", "Letter Head",
+	"Package Import", "Repost Item Valuation", "Import Supplier Invoice", "User Font",
+	"Communication",
+)
 
 
 def file_upload(doc, method):
@@ -10,43 +20,114 @@ def file_upload(doc, method):
 	Hook called after file insertion
 	Uploads file to SharePoint if sync is enabled
 	"""
-	doctype = doc.attached_to_doctype
-	docname = doc.attached_to_name
-	is_file_uploaded = doc.uploaded_to_sharepoint
-	filepath = None
-
 	# Check if SharePoint sync is enabled and file hasn't been uploaded yet
-	if (doctype and docname and method == "after_insert" and 
-		frappe.db.exists("DocType", SETTINGS) and is_file_uploaded == 0):
-		
+	if (method == "after_insert" and is_syncable(doc) and
+		frappe.db.exists("DocType", SETTINGS)):
+
 		settings = frappe.get_single(SETTINGS)
-		
+
 		# Check if file sync is enabled in settings
-		if settings.enable_file_sync:
-			filepath = get_file_path(doc)
-			
-			if filepath:
-				# Enqueue upload to background
-				frappe.enqueue(
-					"frappe_sharepoint.utils.sharepoint.trigger_sharepoint_upload",
-					queue="long",
-					doctype=doctype,
-					docname=docname,
-					filepath=filepath,
-					filedoc=doc.name,
-					timeout=-1
-				)
+		if is_sync_enabled(settings) and not is_excluded(doc.attached_to_doctype, settings):
+			enqueue_upload(doc)
 
 
-def get_file_path(doc):
+def is_sync_enabled(settings=None):
+	"""
+	File sync setting, overridable per site with "disable_sharepoint_sync": 1 in
+	site_config.json so a restored production database cannot sync from a dev site
+	"""
+	if frappe.conf.get("disable_sharepoint_sync"):
+		return False
+
+	settings = settings or frappe.get_single(SETTINGS)
+	return bool(settings.enable_file_sync)
+
+
+def is_excluded(doctype, settings):
+	"""
+	Attachments of excluded document types stay on the Frappe server
+	"""
+	if doctype in ALWAYS_EXCLUDED_DOCTYPES:
+		return True
+
+	return any(row.document_type == doctype for row in settings.get("excluded_doctypes") or [])
+
+
+def is_syncable(doc):
+	"""
+	Only local files attached to a document are sent to SharePoint
+	"""
+	file_url = doc.file_url or ""
+	return bool(
+		doc.attached_to_doctype and doc.attached_to_name
+		and not doc.is_folder
+		and not doc.uploaded_to_sharepoint
+		and file_url.startswith(("/files/", "/private/files/"))
+	)
+
+
+def enqueue_upload(doc, log_missing=True):
+	filepath = get_file_path(doc, log_missing)
+
+	if filepath:
+		# Enqueue upload to background, one pending job per File
+		frappe.enqueue(
+			"frappe_sharepoint.utils.sharepoint.trigger_sharepoint_upload",
+			queue="long",
+			job_id=f"sharepoint_upload::{doc.name}",
+			deduplicate=True,
+			doctype=doc.attached_to_doctype,
+			docname=doc.attached_to_name,
+			filepath=filepath,
+			filedoc=doc.name,
+			timeout=-1,
+			enqueue_after_commit=True
+		)
+
+
+def retry_pending_uploads():
+	"""
+	Hourly: re-queue recent attachments whose SharePoint upload did not complete
+	"""
+	if not frappe.db.exists("DocType", SETTINGS):
+		return
+
+	settings = frappe.get_single(SETTINGS)
+	if not is_sync_enabled(settings):
+		return
+
+	now = now_datetime()
+	files = frappe.get_all(
+		"File",
+		filters={
+			"uploaded_to_sharepoint": 0,
+			"is_folder": 0,
+			"attached_to_doctype": ("is", "set"),
+			"attached_to_name": ("is", "set"),
+			# Leave files alone while their first upload may still be running
+			"creation": ("between", [add_to_date(now, days=-RETRY_WINDOW_DAYS), add_to_date(now, minutes=-15)]),
+		},
+		pluck="name",
+		order_by="creation asc"
+	)
+
+	for name in files:
+		doc = frappe.get_doc("File", name)
+		if is_syncable(doc) and not is_excluded(doc.attached_to_doctype, settings):
+			# Files missing on disk can never succeed, skip them quietly
+			enqueue_upload(doc, log_missing=False)
+
+
+def get_file_path(doc, log_missing=True):
 	"""
 	Construct complete file path from File doc
 	"""
 	try:
-		path = "private/files" if doc.is_private else "public/files"
-		abspath = os.path.abspath(os.curdir)
-		site_path = frappe.get_site_path(path, doc.file_name)
-		filepath = f'{abspath}/{site_path}'
+		filepath = os.path.abspath(doc.get_full_path())
+		if not os.path.exists(filepath):
+			if log_missing:
+				frappe.log_error("File path construction error", f"{doc.name}: {filepath} not found")
+			return None
 		return filepath
 	except Exception as e:
 		frappe.log_error("File path construction error", str(e))

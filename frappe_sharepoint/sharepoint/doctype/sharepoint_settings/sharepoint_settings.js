@@ -29,6 +29,13 @@ frappe.ui.form.on('SharePoint Settings', {
 			}, __('SharePoint'));
 		}
 		
+		// Add Load Default Mappings button (fills the folder mapping tables)
+		if (frm.doc.enable_file_sync && frm.doc.folder_structure !== 'Flat') {
+			frm.add_custom_button(__('Load Default Mappings'), function() {
+				frappe_sharepoint.load_default_mappings(frm);
+			}, __('SharePoint'));
+		}
+
 		// Add Browse SharePoint Sites button (requires Sites.Read.All permission)
 		if (frm.doc.enable_file_sync && frm.doc.tenant_id && frm.doc.client_id && frm.doc.client_secret) {
 			frm.add_custom_button(__('Browse SharePoint Sites'), function() {
@@ -53,6 +60,46 @@ frappe.ui.form.on('SharePoint Settings', {
 
 // SharePoint Browser functionality
 frappe_sharepoint = {
+	// Fill the folder mapping tables with suggestions, keeping rows already entered
+	load_default_mappings: function(frm) {
+		frappe.call({
+			method: 'get_default_folder_mappings',
+			doc: frm.doc,
+			callback: function(r) {
+				if (!r.message) {
+					return;
+				}
+
+				let added = 0;
+				let add_missing = function(table, key, rows) {
+					let existing = (frm.doc[table] || []).map(row => row[key]);
+					rows.forEach(function(row) {
+						if (!existing.includes(row[key])) {
+							frm.add_child(table, row);
+							added++;
+						}
+					});
+					frm.refresh_field(table);
+				};
+
+				if (frm.doc.folder_structure === 'Company/Module/DocType/Document') {
+					add_missing('company_folders', 'company', r.message.companies);
+				}
+				add_missing('doctype_folders', 'document_type', r.message.doctypes);
+
+				if (added) {
+					frm.dirty();
+				}
+				frappe.show_alert({
+					message: added
+						? __('{0} mapping(s) added. Review the folder names, then save.', [added])
+						: __('All default mappings are already present'),
+					indicator: added ? 'green' : 'blue'
+				}, 7);
+			}
+		});
+	},
+
 	// Fetch SharePoint details from URL (works with limited permissions)
 	fetch_details: function(frm) {
 		frappe.call({

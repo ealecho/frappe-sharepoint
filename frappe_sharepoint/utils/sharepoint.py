@@ -3,6 +3,8 @@ from frappe import _
 from frappe_sharepoint.utils import get_request_header, make_request
 
 import os
+import re
+from urllib.parse import quote, unquote
 
 '''
 	SharePoint file synchronization using Direct Drive API
@@ -10,10 +12,22 @@ import os
 
 SETTINGS = "SharePoint Settings"
 ContentType = {"Content-Type": "application/json"}
+COMPANY_STRUCTURE = "Company/Module/DocType/Document"
+
+
+def sanitize_name(name):
+	"""Make a string safe to use as a SharePoint file or folder name"""
+	name = re.sub(r'["*:<>?/\\|]', "-", str(name or ""))
+	return name.strip().rstrip(".").strip() or "_"
 
 
 def trigger_sharepoint_upload(doctype=None, docname=None, filepath=None, filedoc=None):
 	"""Trigger SharePoint file upload"""
+	file = frappe.db.get_value("File", filedoc, ["file_url", "uploaded_to_sharepoint"], as_dict=True)
+	if not file or file.uploaded_to_sharepoint or is_remote_url(file.file_url):
+		# Deleted, or already handled by another job
+		return
+
 	sharepoint = SharePoint(
 		doctype=doctype,
 		docname=docname, 
@@ -21,6 +35,10 @@ def trigger_sharepoint_upload(doctype=None, docname=None, filepath=None, filedoc
 		filedoc=filedoc
 	)
 	sharepoint.run_sharepoint_upload()
+
+
+def is_remote_url(file_url):
+	return (file_url or "").startswith(("http://", "https://"))
 
 
 def upload_document_bundle(doctype, docname, files):
@@ -71,18 +89,18 @@ def upload_document_bundle(doctype, docname, files):
 			
 			# Upload file with overwrite behavior
 			frappe.logger().info(f"[SharePoint Bundle] Uploading {filename} to folder {target_folder_id}")
-			success = sharepoint.upload_file_to_folder(
+			item = sharepoint.upload_file_to_folder(
 				target_folder_id=target_folder_id,
 				filepath=filepath,
 				filename=filename
 			)
 			
-			if success:
+			if item:
 				uploaded_count += 1
 				frappe.logger().info(f"[SharePoint Bundle] Successfully uploaded {filename}")
 				# Update File doc if this is an attachment
 				if file_info.get('file_doc'):
-					frappe.db.set_value("File", file_info['file_doc'], "uploaded_to_sharepoint", 1)
+					sharepoint.mark_file_uploaded(file_info['file_doc'], item, filepath)
 					frappe.logger().info(f"[SharePoint Bundle] Marked File {file_info['file_doc']} as uploaded")
 			else:
 				failed_files.append(filename)
@@ -127,33 +145,89 @@ class SharePoint(object):
 		self.filepath = kwargs.get("filepath")
 		self.filedoc = kwargs.get("filedoc")
 		self.settings = frappe.get_single(SETTINGS)
-		
-		# Validate required settings
-		if not self.settings.sharepoint_drive_id:
-			frappe.throw(_("SharePoint Drive ID not configured in SharePoint Settings"))
-		
-		self.drive_id = self.settings.sharepoint_drive_id
 		self.root_folder = self.settings.root_folder_path or ""
 		self.folder_structure = self.settings.folder_structure or "Module/DocType/Document"
+		self.company_folder = self.get_company_folder()
+
+		# A company can live in its own document library
+		self.drive_id = (self.company_folder or {}).get("drive_id") or self.settings.sharepoint_drive_id
+		if not self.drive_id:
+			frappe.throw(_("SharePoint Drive ID not configured in SharePoint Settings"))
+
 		self.base_url = f'{self.settings.graph_api_url}/drives/{self.drive_id}'
+		self._headers = None
 
-	def get_sharepoint_folder_items(self, folder_id):
+	def get_headers(self, content_type="application/json"):
 		'''
-			Fetch folder contents from SharePoint Drive
+			Authorization headers, token fetched once per upload run
 		'''
-		folder_items = []
-		headers = get_request_header(self.settings)
-		headers.update(ContentType)
-		url = f'{self.base_url}/items/{folder_id}/children'
+		if not self._headers:
+			self._headers = get_request_header(self.settings)
+		headers = dict(self._headers)
+		headers["Content-Type"] = content_type
+		return headers
 
-		response = make_request('GET', url, headers, None)
-		if response.status_code == 200 or response.ok:
-			for item in response.json()['value']:
-				folder_items.append({"name": item["name"], "id": item["id"]})
-		else:
-			frappe.log_error("SharePoint folder items fetch error", response.text)
+	def get_company_folder(self):
+		'''
+			Resolve the top-level (country) folder from the document's Company
+			Returns dict(folder_name, drive_id) or None when the level is skipped
+		'''
+		if self.folder_structure != COMPANY_STRUCTURE:
+			return None
 
-		return folder_items
+		company = None
+		if self.doctype == "Company":
+			company = self.docname
+		elif self.doctype and self.docname and frappe.get_meta(self.doctype).has_field("company"):
+			company = frappe.db.get_value(self.doctype, self.docname, "company")
+
+		if not company:
+			if self.settings.default_company_folder:
+				return {"folder_name": self.settings.default_company_folder, "drive_id": None}
+			return None
+
+		for row in self.settings.get("company_folders") or []:
+			if row.company == company:
+				return {"folder_name": row.folder_name, "drive_id": row.sharepoint_drive_id}
+
+		return {"folder_name": company, "drive_id": None}
+
+	def get_module_folder(self):
+		'''
+			Second-level folder: mapped name for the DocType, else its module
+		'''
+		for row in self.settings.get("doctype_folders") or []:
+			if row.document_type == self.doctype:
+				return row.folder_name
+
+		return frappe.db.get_value("DocType", self.doctype, "module")
+
+	def get_folder_segments(self):
+		'''
+			Folder names below the root folder, based on settings
+		'''
+		if self.folder_structure == "Flat":
+			return []
+
+		segments = []
+		if self.company_folder:
+			# Mapped folder may itself be a path, e.g. "East Africa/PEAS Uganda"
+			segments += [s for s in self.company_folder["folder_name"].split("/") if s.strip()]
+
+		segments += [self.get_module_folder(), self.doctype, self.docname]
+		return [sanitize_name(s) for s in segments if s]
+
+	def get_folder_id_by_name(self, parent_folder_id, folder_name):
+		'''
+			Get folder ID by name within a parent folder
+		'''
+		url = f'{self.base_url}/items/{parent_folder_id}:/{quote(folder_name)}'
+		response = make_request('GET', url, self.get_headers(), None)
+		if response.ok:
+			return response.json()["id"]
+		if response.status_code != 404:
+			frappe.log_error("SharePoint folder lookup error", response.text)
+		return None
 
 	def create_sharepoint_folder(self, parent_folder_id, folder_name):
 		'''
@@ -161,135 +235,52 @@ class SharePoint(object):
 		'''
 		frappe.logger().info(f"[Create Folder] Creating '{folder_name}' in parent {parent_folder_id}")
 		
-		headers = get_request_header(self.settings)
-		headers.update(ContentType)
 		url = f'{self.base_url}/items/{parent_folder_id}/children'
-		frappe.logger().info(f"[Create Folder] URL: {url}")
-		
 		body = {
 			"name": f'{folder_name}',
 			"folder": {},
-			"@microsoft.graph.conflictBehavior": "rename"
+			"@microsoft.graph.conflictBehavior": "fail"
 		}
 
-		response = make_request('POST', url, headers, body)
-		frappe.logger().info(f"[Create Folder] Response status: {response.status_code if response else 'None'}")
+		response = make_request('POST', url, self.get_headers(), body)
 		
+		if response.status_code == 409:
+			# Created by a parallel upload in the meantime
+			return self.get_folder_id_by_name(parent_folder_id, folder_name)
+
 		if not response.ok:
-			frappe.logger().error(f"[Create Folder] Failed to create '{folder_name}': {response.text if response else 'No response'}")
+			frappe.logger().error(f"[Create Folder] Failed to create '{folder_name}': {response.text}")
 			frappe.log_error("SharePoint folder creation error", response.text)
 			return None
-		else:
-			folder_id = response.json()["id"]
-			frappe.logger().info(f"[Create Folder] Successfully created '{folder_name}' with ID: {folder_id}")
-			return folder_id
 
-	def get_folder_id_by_name(self, parent_folder_id, folder_name):
-		'''
-			Get folder ID by name within a parent folder
-		'''
-		folder_id = None
-		folder_items = self.get_sharepoint_folder_items(parent_folder_id)
-		for item in folder_items:
-			if folder_name == item['name']:
-				folder_id = item['id']
-				break
+		folder_id = response.json()["id"]
+		frappe.logger().info(f"[Create Folder] Successfully created '{folder_name}' with ID: {folder_id}")
 		return folder_id
 
 	def get_or_create_folder(self, parent_folder_id, folder_name):
 		'''
 			Get existing folder or create new one
 		'''
-		frappe.logger().info(f"[Get/Create Folder] Looking for '{folder_name}' in parent {parent_folder_id}")
 		folder_id = self.get_folder_id_by_name(parent_folder_id, folder_name)
-		
 		if not folder_id:
-			frappe.logger().info(f"[Get/Create Folder] Folder '{folder_name}' not found, creating...")
 			folder_id = self.create_sharepoint_folder(parent_folder_id, folder_name)
-			frappe.logger().info(f"[Get/Create Folder] Created folder '{folder_name}' with ID: {folder_id}")
-		else:
-			frappe.logger().info(f"[Get/Create Folder] Found existing folder '{folder_name}' with ID: {folder_id}")
-		
 		return folder_id
-
-	def get_root_folder_id(self):
-		'''
-			Get or create the root folder for uploads
-		'''
-		frappe.logger().info(f"[Get Root Folder] Starting - root_folder: '{self.root_folder}'")
-		
-		if self.root_folder:
-			# Navigate to root folder path
-			frappe.logger().info(f"[Get Root Folder] Fetching root folder from path: {self.root_folder}")
-			headers = get_request_header(self.settings)
-			url = f'{self.base_url}/root:/{self.root_folder}'
-			frappe.logger().info(f"[Get Root Folder] URL: {url}")
-			
-			response = make_request('GET', url, headers, None)
-			frappe.logger().info(f"[Get Root Folder] Response status: {response.status_code if response else 'None'}")
-			
-			if response.ok:
-				folder_id = response.json()["id"]
-				frappe.logger().info(f"[Get Root Folder] Found existing root folder ID: {folder_id}")
-				return folder_id
-			else:
-				# Create root folder if it doesn't exist
-				frappe.logger().warning(f"[Get Root Folder] Root folder not found, creating: {self.root_folder}")
-				folder_id = self.create_sharepoint_folder("root", self.root_folder)
-				frappe.logger().info(f"[Get Root Folder] Created root folder ID: {folder_id}")
-				return folder_id
-		else:
-			# Use drive root
-			frappe.logger().info(f"[Get Root Folder] No root folder specified, using drive root")
-			headers = get_request_header(self.settings)
-			url = f'{self.base_url}/root'
-			response = make_request('GET', url, headers, None)
-			if response.ok:
-				folder_id = response.json()["id"]
-				frappe.logger().info(f"[Get Root Folder] Drive root ID: {folder_id}")
-				return folder_id
-			frappe.logger().info(f"[Get Root Folder] Using 'root' as folder ID")
-			return "root"
 
 	def build_folder_structure(self):
 		'''
 			Build folder structure based on settings
 			Returns the final folder ID where file should be uploaded
 		'''
-		frappe.logger().info(f"[Build Folders] Starting - structure: {self.folder_structure}")
-		current_folder_id = self.get_root_folder_id()
-		frappe.logger().info(f"[Build Folders] Root folder ID: {current_folder_id}")
+		segments = [sanitize_name(s) for s in self.root_folder.split("/") if s.strip()]
+		segments += self.get_folder_segments()
+		frappe.logger().info(f"[Build Folders] Target path: {'/'.join(segments) or '(drive root)'}")
 
-		if self.folder_structure == "Flat":
-			# No additional folders, upload directly to root
-			frappe.logger().info(f"[Build Folders] Using flat structure - no additional folders")
-			return current_folder_id
-		
-		# Module/DocType/Document structure
-		doctype_module = frappe.db.get_value("DocType", {"name": self.doctype}, "module")
-		frappe.logger().info(f"[Build Folders] DocType module: {doctype_module}")
-		
-		# Create Module folder
-		if doctype_module:
-			frappe.logger().info(f"[Build Folders] Creating/getting module folder: {doctype_module}")
-			module_id = self.get_or_create_folder(current_folder_id, doctype_module)
-			current_folder_id = module_id
-			frappe.logger().info(f"[Build Folders] Module folder ID: {module_id}")
-		
-		# Create DocType folder
-		frappe.logger().info(f"[Build Folders] Creating/getting doctype folder: {self.doctype}")
-		doctype_id = self.get_or_create_folder(current_folder_id, self.doctype)
-		current_folder_id = doctype_id
-		frappe.logger().info(f"[Build Folders] DocType folder ID: {doctype_id}")
-		
-		# Create Document folder (docname)
-		if self.docname:
-			frappe.logger().info(f"[Build Folders] Creating/getting document folder: {self.docname}")
-			document_id = self.get_or_create_folder(current_folder_id, self.docname)
-			current_folder_id = document_id
-			frappe.logger().info(f"[Build Folders] Document folder ID: {document_id}")
-		
-		frappe.logger().info(f"[Build Folders] Final target folder ID: {current_folder_id}")
+		current_folder_id = "root"
+		for segment in segments:
+			current_folder_id = self.get_or_create_folder(current_folder_id, segment)
+			if not current_folder_id:
+				return None
+
 		return current_folder_id
 
 	def run_sharepoint_upload(self):
@@ -304,58 +295,113 @@ class SharePoint(object):
 				frappe.log_error("SharePoint Upload Error", "Could not determine target folder")
 				return
 
-			# Get file content and name
-			file_content = self.get_file_content()
-			file_name = self.filepath.split("/")[-1] if self.filepath else None
-
-			if not file_content or not file_name:
-				frappe.log_error("SharePoint Upload Error", "File content or name is missing")
+			file_name = os.path.basename(self.filepath) if self.filepath else None
+			if not file_name:
+				frappe.log_error("SharePoint Upload Error", "File name is missing")
 				return
 
-			# Upload file
-			headers = get_request_header(self.settings)
-			headers.update({"Content-Type": "application/octet-stream"})
-			url = f'{self.base_url}/items/{target_folder_id}:/{file_name}:/content'
-
-			response = make_request('PUT', url, headers, file_content)
-			
-			if not response.ok:
-				frappe.log_error("SharePoint File Upload Error", response.text)
-			else:
-				# Mark file as uploaded
-				frappe.db.set_value("File", self.filedoc, "uploaded_to_sharepoint", 1)
-				
-				# Replace file link if configured
-				if self.settings.replace_file_link:
-					web_url = response.json().get('webUrl')
-					if web_url:
-						frappe.db.set_value("File", self.filedoc, "file_url", web_url)
-						self.remove_file()
-				
-				frappe.msgprint(_("File uploaded to SharePoint successfully"))
+			item = self.upload_file_to_folder(target_folder_id, self.filepath, file_name)
+			if item:
+				self.mark_file_uploaded(self.filedoc, item, self.filepath)
 		
 		except Exception as e:
 			frappe.log_error("SharePoint Upload Error", str(e))
 
-	def get_file_content(self):
+	def mark_file_uploaded(self, filedoc, item, filepath):
 		'''
-			Read file content from filesystem
+			Flag the File as uploaded and, if configured, link it to SharePoint
+			and drop the local copy
 		'''
-		try:
-			if self.filepath:
-				return open(self.filepath, 'rb')
-			return None
-		except Exception as e:
-			frappe.log_error('File read error', str(e))
-			return None
+		web_url = item.get('webUrl')
+		if not (self.settings.replace_file_link and web_url):
+			frappe.db.set_value("File", filedoc, "uploaded_to_sharepoint", 1)
+			return
 
-	def remove_file(self):
+		file = frappe.db.get_value(
+			"File", filedoc,
+			["file_url", "attached_to_doctype", "attached_to_name", "attached_to_field"],
+			as_dict=True
+		)
+		local_url = file.file_url
+
+		if file.attached_to_field:
+			outcome = self.relink_attach_fields(file, web_url)
+			if outcome == "pending":
+				# Uploaded through an Attach field of a document that is not saved
+				# yet. Leave the File flagged as not uploaded, the hourly retry
+				# picks it up again once the document references it
+				return
+			if outcome == "keep":
+				frappe.db.set_value("File", filedoc, "uploaded_to_sharepoint", 1)
+				return
+
+		# Frappe percent-encodes file_url when rendering links, store it decoded
+		frappe.db.set_value("File", filedoc, {"uploaded_to_sharepoint": 1, "file_url": unquote(web_url)})
+
+		# Only drop the local copy once the new link is committed, a rollback
+		# would otherwise leave the File pointing at a deleted path
+		frappe.db.after_commit.add(lambda: self.remove_unreferenced_file(local_url, filepath))
+
+	def relink_attach_fields(self, file, web_url):
+		'''
+			A file uploaded through an Attach field is referenced by that field,
+			on the document or in one of its child tables. Point those at
+			SharePoint too. Returns
+				"relinked": fields updated, the local file can go
+				"keep": used by an Attach Image field. SharePoint links need a
+					login, the image would not render, so the file stays local
+				"pending": nothing references the file (yet)
+		'''
+		doctype, docname, local_url = file.attached_to_doctype, file.attached_to_name, file.file_url
+		attach_types = ("Attach", "Attach Image")
+		references = []
+
+		meta = frappe.get_meta(doctype)
+		for field in meta.fields:
+			if field.fieldtype in attach_types and frappe.db.get_value(doctype, docname, field.fieldname) == local_url:
+				references.append((doctype, docname, field))
+
+		for table in meta.get_table_fields():
+			for field in frappe.get_meta(table.options).fields:
+				if field.fieldtype not in attach_types:
+					continue
+				rows = frappe.get_all(
+					table.options,
+					filters={
+						"parent": docname, "parenttype": doctype,
+						"parentfield": table.fieldname, field.fieldname: local_url
+					},
+					pluck="name"
+				)
+				references += [(table.options, row, field) for row in rows]
+
+		if not references:
+			return "pending"
+
+		if any(field.fieldtype == "Attach Image" for _, _, field in references):
+			return "keep"
+
+		# Attach controls use the value as the link as it is, keep it encoded
+		for ref_doctype, ref_name, field in references:
+			frappe.db.set_value(ref_doctype, ref_name, field.fieldname, web_url, update_modified=False)
+
+		return "relinked"
+
+	def remove_unreferenced_file(self, local_url, filepath):
+		'''
+			Frappe points identical uploads at one file on disk, keep it until
+			every File using it has moved to SharePoint
+		'''
+		if not frappe.db.exists("File", {"file_url": local_url}):
+			self.remove_file(filepath)
+
+	def remove_file(self, filepath):
 		'''
 			Remove file from local filesystem after successful upload
 		'''
 		try:
-			if self.filepath:
-				os.remove(self.filepath)
+			if filepath and os.path.exists(filepath):
+				os.remove(filepath)
 		except Exception as e:
 			frappe.log_error("File remove error", str(e))
 	
@@ -369,51 +415,32 @@ class SharePoint(object):
 				filename: Name for the file in SharePoint
 				
 			Returns:
-				bool: True if upload successful, False otherwise
+				dict: SharePoint drive item if upload successful, None otherwise
 		'''
 		try:
-			frappe.logger().info(f"[Upload File] Starting upload: {filename}")
-			frappe.logger().info(f"[Upload File] Source path: {filepath}")
-			frappe.logger().info(f"[Upload File] Target folder ID: {target_folder_id}")
+			frappe.logger().info(f"[Upload File] Uploading {filename} from {filepath} to folder {target_folder_id}")
 			
-			# Read file content
-			frappe.logger().info(f"[Upload File] Reading file content from disk")
 			with open(filepath, 'rb') as f:
 				file_content = f.read()
 			
-			frappe.logger().info(f"[Upload File] File size: {len(file_content)} bytes")
-			
 			if not file_content:
-				frappe.logger().error(f"[Upload File] File {filename} is empty")
 				frappe.log_error("SharePoint Upload Error", f"File {filename} is empty")
-				return False
+				return None
 			
 			# Upload file with replace behavior
-			frappe.logger().info(f"[Upload File] Getting authentication headers")
-			headers = get_request_header(self.settings)
-			headers.update({"Content-Type": "application/octet-stream"})
-			
-			url = f'{self.base_url}/items/{target_folder_id}:/{filename}:/content'
-			frappe.logger().info(f"[Upload File] Upload URL: {url}")
-			
-			frappe.logger().info(f"[Upload File] Making PUT request to SharePoint")
-			response = make_request('PUT', url, headers, file_content)
-			
-			frappe.logger().info(f"[Upload File] Response status: {response.status_code if response else 'None'}")
+			url = f'{self.base_url}/items/{target_folder_id}:/{quote(sanitize_name(filename))}:/content'
+			response = make_request('PUT', url, self.get_headers("application/octet-stream"), file_content)
 			
 			if not response.ok:
-				frappe.logger().error(f"[Upload File] Upload failed for {filename}")
-				frappe.logger().error(f"[Upload File] Response: {response.text if response else 'No response'}")
 				frappe.log_error("SharePoint File Upload Error", f"File: {filename}, Status: {response.status_code}, Error: {response.text}")
-				return False
+				return None
 			
 			frappe.logger().info(f"[Upload File] Successfully uploaded {filename}")
-			return True
+			return response.json()
 			
 		except Exception as e:
-			frappe.logger().error(f"[Upload File] Exception while uploading {filename}: {str(e)}")
 			frappe.log_error("File Upload Error", f"File: {filename}, Error: {str(e)}")
-			return False
+			return None
 	
 	def get_folder_url(self, folder_id):
 		'''
@@ -426,25 +453,15 @@ class SharePoint(object):
 				str: Web URL to the folder or None
 		'''
 		try:
-			frappe.logger().info(f"[Get Folder URL] Fetching URL for folder ID: {folder_id}")
-			
-			headers = get_request_header(self.settings)
 			url = f'{self.base_url}/items/{folder_id}'
-			frappe.logger().info(f"[Get Folder URL] Request URL: {url}")
-			
-			response = make_request('GET', url, headers, None)
-			frappe.logger().info(f"[Get Folder URL] Response status: {response.status_code if response else 'None'}")
+			response = make_request('GET', url, self.get_headers(), None)
 			
 			if response.ok:
-				web_url = response.json().get('webUrl')
-				frappe.logger().info(f"[Get Folder URL] Retrieved web URL: {web_url}")
-				return web_url
-			else:
-				frappe.logger().error(f"[Get Folder URL] Failed to get URL: {response.text if response else 'No response'}")
-			
+				return response.json().get('webUrl')
+
+			frappe.logger().error(f"[Get Folder URL] Failed to get URL: {response.text}")
 			return None
 			
 		except Exception as e:
-			frappe.logger().error(f"[Get Folder URL] Exception: {str(e)}")
 			frappe.log_error("Get Folder URL Error", str(e))
 			return None

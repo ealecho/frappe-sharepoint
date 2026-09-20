@@ -6,11 +6,49 @@ from frappe import _
 from frappe.model.document import Document
 from urllib.parse import urlparse
 
+# Suggested second-level folders, offered by "Load Default Mappings"
+DEFAULT_DOCTYPE_FOLDERS = {
+	"Accounting": [
+		"Journal Entry", "Payment Entry", "Sales Invoice", "Purchase Invoice",
+		"Bank Account", "Bank Transaction", "Payment Request", "Budget",
+	],
+	"Procurement": [
+		"Material Request", "Request for Quotation", "Supplier Quotation",
+		"Purchase Order", "Purchase Receipt", "Supplier",
+	],
+	"Expenses": ["Expense Claim", "Employee Advance"],
+	"HR": [
+		"Employee", "Leave Application", "Job Applicant", "Job Offer",
+		"Appraisal", "Salary Slip", "Employee Onboarding", "Employee Separation",
+	],
+}
+
+
 class SharePointSettings(Document):
 	def validate(self):
 		"""Validate settings before saving"""
 		self.validate_root_folder_path()
-	
+		self.validate_folder_mappings()
+
+	def validate_folder_mappings(self):
+		"""Clean mapped folder names and reject duplicate mappings"""
+		if self.default_company_folder:
+			self.default_company_folder = self.default_company_folder.strip().strip('/')
+
+		for table, key in (("company_folders", "company"), ("doctype_folders", "document_type")):
+			seen = set()
+			for row in self.get(table) or []:
+				row.folder_name = (row.folder_name or "").strip().strip('/')
+				if not row.folder_name:
+					frappe.throw(_("Row {0}: SharePoint Folder is required").format(row.idx))
+
+				if row.get(key) in seen:
+					frappe.throw(
+						_("{0} is mapped more than once").format(row.get(key)),
+						title=_("Duplicate Mapping")
+					)
+				seen.add(row.get(key))
+
 	def validate_root_folder_path(self):
 		"""Validate and sanitize root folder path"""
 		if self.root_folder_path:
@@ -49,6 +87,24 @@ class SharePointSettings(Document):
 						_("Root Folder Path cannot have empty folder names"),
 						title=_("Invalid Path")
 					)
+	
+	@frappe.whitelist()
+	def get_default_folder_mappings(self):
+		"""Suggest folder mappings: every Company and the common document types on this site"""
+		companies = []
+		if frappe.db.exists("DocType", "Company"):
+			companies = [
+				{"company": name, "folder_name": name}
+				for name in frappe.get_all("Company", pluck="name", order_by="name")
+			]
+		
+		doctypes = []
+		for folder_name, document_types in DEFAULT_DOCTYPE_FOLDERS.items():
+			for document_type in document_types:
+				if frappe.db.exists("DocType", document_type):
+					doctypes.append({"document_type": document_type, "folder_name": folder_name})
+		
+		return {"companies": companies, "doctypes": doctypes}
 	
 	@frappe.whitelist()
 	def test_connection(self):
