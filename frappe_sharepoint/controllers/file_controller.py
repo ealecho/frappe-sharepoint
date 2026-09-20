@@ -7,7 +7,10 @@ SETTINGS = "SharePoint Settings"
 RETRY_WINDOW_DAYS = 7
 
 # Frappe reads these attachments back from disk, they must stay local
-ALWAYS_EXCLUDED_DOCTYPES = ("Data Import", "Bank Statement Import", "Prepared Report", "Letter Head")
+ALWAYS_EXCLUDED_DOCTYPES = (
+	"Data Import", "Bank Statement Import", "Prepared Report", "Letter Head",
+	"Package Import", "Repost Item Valuation", "Import Supplier Invoice", "User Font",
+)
 
 
 def file_upload(doc, method):

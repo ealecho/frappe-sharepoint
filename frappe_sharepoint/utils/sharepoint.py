@@ -4,7 +4,7 @@ from frappe_sharepoint.utils import get_request_header, make_request
 
 import os
 import re
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 '''
 	SharePoint file synchronization using Direct Drive API
@@ -312,10 +312,9 @@ class SharePoint(object):
 			Flag the File as uploaded and, if configured, link it to SharePoint
 			and drop the local copy
 		'''
-		frappe.db.set_value("File", filedoc, "uploaded_to_sharepoint", 1)
-
 		web_url = item.get('webUrl')
 		if not (self.settings.replace_file_link and web_url):
+			frappe.db.set_value("File", filedoc, "uploaded_to_sharepoint", 1)
 			return
 
 		file = frappe.db.get_value(
@@ -325,36 +324,68 @@ class SharePoint(object):
 		)
 		local_url = file.file_url
 
-		if file.attached_to_field and not self.relink_attach_field(file, web_url):
-			# The document still shows the local file, keep it
-			return
+		if file.attached_to_field:
+			outcome = self.relink_attach_fields(file, web_url)
+			if outcome == "pending":
+				# Uploaded through an Attach field of a document that is not saved
+				# yet. Leave the File flagged as not uploaded, the hourly retry
+				# picks it up again once the document references it
+				return
+			if outcome == "keep":
+				frappe.db.set_value("File", filedoc, "uploaded_to_sharepoint", 1)
+				return
 
-		frappe.db.set_value("File", filedoc, "file_url", web_url)
+		# Frappe percent-encodes file_url when rendering links, store it decoded
+		frappe.db.set_value("File", filedoc, {"uploaded_to_sharepoint": 1, "file_url": unquote(web_url)})
 
 		# Only drop the local copy once the new link is committed, a rollback
 		# would otherwise leave the File pointing at a deleted path
 		frappe.db.after_commit.add(lambda: self.remove_unreferenced_file(local_url, filepath))
 
-	def relink_attach_field(self, file, web_url):
+	def relink_attach_fields(self, file, web_url):
 		'''
 			A file uploaded through an Attach field is referenced by that field,
-			point it at SharePoint too. Returns False when the file has to stay
-			local: images (SharePoint links need a login, they would not render)
-			and fields that cannot be resolved, e.g. inside a child table
+			on the document or in one of its child tables. Point those at
+			SharePoint too. Returns
+				"relinked": fields updated, the local file can go
+				"keep": used by an Attach Image field. SharePoint links need a
+					login, the image would not render, so the file stays local
+				"pending": nothing references the file (yet)
 		'''
-		field = frappe.get_meta(file.attached_to_doctype).get_field(file.attached_to_field)
-		if not field or field.fieldtype != "Attach":
-			return False
+		doctype, docname, local_url = file.attached_to_doctype, file.attached_to_name, file.file_url
+		attach_types = ("Attach", "Attach Image")
+		references = []
 
-		current = frappe.db.get_value(file.attached_to_doctype, file.attached_to_name, field.fieldname)
-		if current != file.file_url:
-			return False
+		meta = frappe.get_meta(doctype)
+		for field in meta.fields:
+			if field.fieldtype in attach_types and frappe.db.get_value(doctype, docname, field.fieldname) == local_url:
+				references.append((doctype, docname, field))
 
-		frappe.db.set_value(
-			file.attached_to_doctype, file.attached_to_name, field.fieldname, web_url,
-			update_modified=False
-		)
-		return True
+		for table in meta.get_table_fields():
+			for field in frappe.get_meta(table.options).fields:
+				if field.fieldtype not in attach_types:
+					continue
+				rows = frappe.get_all(
+					table.options,
+					filters={
+						"parent": docname, "parenttype": doctype,
+						"parentfield": table.fieldname, field.fieldname: local_url
+					},
+					pluck="name"
+				)
+				references += [(table.options, row, field) for row in rows]
+
+		if not references:
+			return "pending"
+
+		if any(field.fieldtype == "Attach Image" for _, _, field in references):
+			return "keep"
+
+		# Attach controls use the value as the link as it is, keep it encoded
+		for ref_doctype, ref_name, field in references:
+			frappe.db.set_value(ref_doctype, ref_name, field.fieldname, web_url, update_modified=False)
+
+		return "relinked"
 
 	def remove_unreferenced_file(self, local_url, filepath):
 		'''
