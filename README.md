@@ -92,10 +92,16 @@ bench restart
    - **Root Folder Path**: (Optional) Specify a root folder within the drive (e.g., `/Frappe Files`)
 
    **File Handling:**
-   - **Replace File Link**: Check to replace local files with SharePoint links (saves local storage)
+   - **Store Files on SharePoint Only**: Check to link attachments to their SharePoint URL and remove the copy on the Frappe server once the upload succeeds. Users open these files directly in SharePoint, so they need access to the SharePoint site.
    - **Folder Structure**: Choose between:
+     - `Company/Module/DocType/Document`: One top-level folder per company (e.g. per country), then hierarchical folders
      - `Module/DocType/Document`: Creates hierarchical folders
      - `Flat`: Uploads all files to root folder
+
+   **Folder Mapping:**
+   - **Company Folders**: Map each Company to its top-level folder (e.g. `PEAS Uganda Ltd` → `PEAS Uganda`), optionally with its own Drive ID if that country uses a separate document library. Unmapped companies use the company name.
+   - **Folder for Documents without a Company**: Used for doctypes that have no Company field. Leave blank to skip the company level for those.
+   - **Document Type Folders**: Map a DocType to a friendlier second-level folder (e.g. `Expense Claim` → `Expenses`, `Purchase Order` → `Procurement`). Unmapped doctypes use their module name.
 
 <img src="./m365_settings.png" height="580">
 
@@ -111,8 +117,22 @@ Once configured, the app will automatically:
 2. Create the folder structure based on your settings
 3. Mark files as "Uploaded to SharePoint"
 4. Optionally replace the local file with a SharePoint link
+5. Retry uploads that did not complete (hourly, for files attached in the last 7 days)
+
+Characters SharePoint does not allow in names (`" * : < > ? / \ |`) are replaced with `-`, so a document named `ACC-SINV/2025/0001` gets the folder `ACC-SINV-2025-0001`.
 
 ### Folder Structure Examples
+
+**Company/Module/DocType/Document:**
+```
+SharePoint Drive
+└── [Root Folder Path]
+    └── PEAS Uganda                  (Company Folders mapping)
+        └── Expenses                 (Document Type Folders mapping, else module name)
+            └── Expense Claim
+                └── HR-EXP-2025-00033
+                    └── [File]
+```
 
 **Module/DocType/Document:**
 ```

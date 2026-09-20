@@ -113,6 +113,12 @@ doc_events = {
 # Scheduled Tasks
 # ---------------
 
+scheduler_events = {
+	"hourly": [
+		"frappe_sharepoint.controllers.file_controller.retry_pending_uploads"
+	],
+}
+
 # scheduler_events = {
 #	"all": [
 #		"frappe_m365.tasks.all"

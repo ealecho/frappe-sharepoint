@@ -10,7 +10,27 @@ class SharePointSettings(Document):
 	def validate(self):
 		"""Validate settings before saving"""
 		self.validate_root_folder_path()
-	
+		self.validate_folder_mappings()
+
+	def validate_folder_mappings(self):
+		"""Clean mapped folder names and reject duplicate mappings"""
+		if self.default_company_folder:
+			self.default_company_folder = self.default_company_folder.strip().strip('/')
+
+		for table, key in (("company_folders", "company"), ("doctype_folders", "document_type")):
+			seen = set()
+			for row in self.get(table) or []:
+				row.folder_name = (row.folder_name or "").strip().strip('/')
+				if not row.folder_name:
+					frappe.throw(_("Row {0}: SharePoint Folder is required").format(row.idx))
+
+				if row.get(key) in seen:
+					frappe.throw(
+						_("{0} is mapped more than once").format(row.get(key)),
+						title=_("Duplicate Mapping")
+					)
+				seen.add(row.get(key))
+
 	def validate_root_folder_path(self):
 		"""Validate and sanitize root folder path"""
 		if self.root_folder_path:
