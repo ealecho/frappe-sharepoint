@@ -98,7 +98,11 @@ bench restart
      - `Module/DocType/Document`: Creates hierarchical folders
      - `Flat`: Uploads all files to root folder
 
-   **Folder Mapping:**
+   - **Excluded Document Types**: Attachments of these document types stay on the Frappe server and are never sent to SharePoint. Data Import, Bank Statement Import, Prepared Report and Letter Head are always excluded, because Frappe reads their files back from disk.
+
+   Files uploaded through an **Attach** field are moved too and the field is pointed at the SharePoint URL. Files in **Attach Image** fields (and attach fields inside child tables) are copied to SharePoint but kept on the server, since a SharePoint link needs a login and would not render as an image.
+
+   **Folder Mapping:** (optional, use **SharePoint > Load Default Mappings** for a starting point; folders are created automatically)
    - **Company Folders**: Map each Company to its top-level folder (e.g. `PEAS Uganda Ltd` → `PEAS Uganda`), optionally with its own Drive ID if that country uses a separate document library. Unmapped companies use the company name.
    - **Folder for Documents without a Company**: Used for doctypes that have no Company field. Leave blank to skip the company level for those.
    - **Document Type Folders**: Map a DocType to a friendlier second-level folder (e.g. `Expense Claim` → `Expenses`, `Purchase Order` → `Procurement`). Unmapped doctypes use their module name.
@@ -161,6 +165,16 @@ SharePoint Drive
 2. Click "Test Connection" to verify your Azure AD credentials
 3. Check Error Log in Frappe for specific error messages
 4. Ensure the SharePoint Site ID and Drive ID are correctly fetched
+
+### Development and staging sites
+
+A database restored from production brings the production SharePoint Settings with it. To make sure such a site never syncs, add this to its `site_config.json` (it is not part of database backups, so it survives restores):
+
+```json
+"disable_sharepoint_sync": 1
+```
+
+This overrides **Enable File Sync**: no uploads, no retries, no local files removed. Remove the key, or point the site at a separate test document library, to test the integration.
 
 ### Permission errors?
 

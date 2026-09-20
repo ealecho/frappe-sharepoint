@@ -26,7 +26,8 @@ def upload_document_to_sharepoint(doctype, docname):
 		settings = frappe.get_single(SETTINGS)
 		frappe.logger().info(f"[SharePoint Upload] SharePoint sync enabled: {settings.enable_file_sync}")
 		
-		if not settings.enable_file_sync:
+		from frappe_sharepoint.controllers.file_controller import is_sync_enabled
+		if not is_sync_enabled(settings):
 			frappe.throw(_("SharePoint file sync is not enabled in SharePoint Settings"))
 		
 		# Generate document PDF

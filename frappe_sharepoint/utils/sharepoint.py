@@ -318,12 +318,43 @@ class SharePoint(object):
 		if not (self.settings.replace_file_link and web_url):
 			return
 
-		local_url = frappe.db.get_value("File", filedoc, "file_url")
+		file = frappe.db.get_value(
+			"File", filedoc,
+			["file_url", "attached_to_doctype", "attached_to_name", "attached_to_field"],
+			as_dict=True
+		)
+		local_url = file.file_url
+
+		if file.attached_to_field and not self.relink_attach_field(file, web_url):
+			# The document still shows the local file, keep it
+			return
+
 		frappe.db.set_value("File", filedoc, "file_url", web_url)
 
 		# Only drop the local copy once the new link is committed, a rollback
 		# would otherwise leave the File pointing at a deleted path
 		frappe.db.after_commit.add(lambda: self.remove_unreferenced_file(local_url, filepath))
+
+	def relink_attach_field(self, file, web_url):
+		'''
+			A file uploaded through an Attach field is referenced by that field,
+			point it at SharePoint too. Returns False when the file has to stay
+			local: images (SharePoint links need a login, they would not render)
+			and fields that cannot be resolved, e.g. inside a child table
+		'''
+		field = frappe.get_meta(file.attached_to_doctype).get_field(file.attached_to_field)
+		if not field or field.fieldtype != "Attach":
+			return False
+
+		current = frappe.db.get_value(file.attached_to_doctype, file.attached_to_name, field.fieldname)
+		if current != file.file_url:
+			return False
+
+		frappe.db.set_value(
+			file.attached_to_doctype, file.attached_to_name, field.fieldname, web_url,
+			update_modified=False
+		)
+		return True
 
 	def remove_unreferenced_file(self, local_url, filepath):
 		'''

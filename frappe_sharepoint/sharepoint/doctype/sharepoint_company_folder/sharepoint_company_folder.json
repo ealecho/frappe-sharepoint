@@ -21,10 +21,10 @@
   {
    "fieldname": "folder_name",
    "fieldtype": "Data",
-   "label": "SharePoint Folder",
+   "label": "Folder Name",
    "in_list_view": 1,
    "reqd": 1,
-   "description": "e.g., PEAS Uganda"
+   "description": "Any name you like, e.g., PEAS Uganda. Created in SharePoint automatically."
   },
   {
    "fieldname": "sharepoint_drive_id",
@@ -37,7 +37,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-20 10:00:00.000000",
+ "modified": "2026-09-20 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "SharePoint",
  "name": "SharePoint Company Folder",

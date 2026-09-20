@@ -24,6 +24,7 @@
   "file_handling_section",
   "replace_file_link",
   "folder_structure",
+  "excluded_doctypes",
   "folder_mapping_section",
   "company_folders",
   "default_company_folder",
@@ -144,10 +145,19 @@
    "description": "How to organize files in SharePoint"
   },
   {
+   "depends_on": "eval: doc.enable_file_sync == 1",
+   "fieldname": "excluded_doctypes",
+   "fieldtype": "Table",
+   "label": "Excluded Document Types",
+   "options": "SharePoint Excluded DocType",
+   "description": "Attachments of these document types stay on the Frappe server and are not sent to SharePoint. Data Import, Bank Statement Import, Prepared Report and Letter Head are always excluded because Frappe reads their files back."
+  },
+  {
    "depends_on": "eval: doc.enable_file_sync == 1 && doc.folder_structure != 'Flat'",
    "fieldname": "folder_mapping_section",
    "fieldtype": "Section Break",
-   "label": "Folder Mapping"
+   "label": "Folder Mapping",
+   "description": "Optional. Folders are created in SharePoint automatically, you only choose their names. Use SharePoint > Load Default Mappings for a starting point."
   },
   {
    "depends_on": "eval: doc.enable_file_sync == 1 && doc.folder_structure == 'Company/Module/DocType/Document'",
@@ -155,7 +165,7 @@
    "fieldtype": "Table",
    "label": "Company Folders",
    "options": "SharePoint Company Folder",
-   "description": "Top-level folder for each company, e.g., PEAS Uganda. Companies not listed here use the company name."
+   "description": "Name of the top-level folder for each company, e.g., PEAS Uganda. Companies not listed here use the company name."
   },
   {
    "depends_on": "eval: doc.enable_file_sync == 1 && doc.folder_structure == 'Company/Module/DocType/Document'",
@@ -170,13 +180,13 @@
    "fieldtype": "Table",
    "label": "Document Type Folders",
    "options": "SharePoint DocType Folder",
-   "description": "Second-level folder per document type, e.g., Expense Claim -> Expenses. Document types not listed here use their module name."
+   "description": "Name of the second-level folder per document type, e.g., Expense Claim -> Expenses. Document types not listed here use their module name."
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-20 10:00:00.000000",
+ "modified": "2026-09-20 17:00:00.000000",
  "modified_by": "Administrator",
  "module": "SharePoint",
  "name": "SharePoint Settings",

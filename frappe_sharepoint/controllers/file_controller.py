@@ -6,6 +6,9 @@ import os
 SETTINGS = "SharePoint Settings"
 RETRY_WINDOW_DAYS = 7
 
+# Frappe reads these attachments back from disk, they must stay local
+ALWAYS_EXCLUDED_DOCTYPES = ("Data Import", "Bank Statement Import", "Prepared Report", "Letter Head")
+
 
 def file_upload(doc, method):
 	"""
@@ -19,8 +22,30 @@ def file_upload(doc, method):
 		settings = frappe.get_single(SETTINGS)
 
 		# Check if file sync is enabled in settings
-		if settings.enable_file_sync:
+		if is_sync_enabled(settings) and not is_excluded(doc.attached_to_doctype, settings):
 			enqueue_upload(doc)
+
+
+def is_sync_enabled(settings=None):
+	"""
+	File sync setting, overridable per site with "disable_sharepoint_sync": 1 in
+	site_config.json so a restored production database cannot sync from a dev site
+	"""
+	if frappe.conf.get("disable_sharepoint_sync"):
+		return False
+
+	settings = settings or frappe.get_single(SETTINGS)
+	return bool(settings.enable_file_sync)
+
+
+def is_excluded(doctype, settings):
+	"""
+	Attachments of excluded document types stay on the Frappe server
+	"""
+	if doctype in ALWAYS_EXCLUDED_DOCTYPES:
+		return True
+
+	return any(row.document_type == doctype for row in settings.get("excluded_doctypes") or [])
 
 
 def is_syncable(doc):
@@ -62,7 +87,8 @@ def retry_pending_uploads():
 	if not frappe.db.exists("DocType", SETTINGS):
 		return
 
-	if not frappe.db.get_single_value(SETTINGS, "enable_file_sync"):
+	settings = frappe.get_single(SETTINGS)
+	if not is_sync_enabled(settings):
 		return
 
 	now = now_datetime()
@@ -82,7 +108,7 @@ def retry_pending_uploads():
 
 	for name in files:
 		doc = frappe.get_doc("File", name)
-		if is_syncable(doc):
+		if is_syncable(doc) and not is_excluded(doc.attached_to_doctype, settings):
 			# Files missing on disk can never succeed, skip them quietly
 			enqueue_upload(doc, log_missing=False)
 
