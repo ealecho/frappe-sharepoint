@@ -321,9 +321,16 @@ class SharePoint(object):
 		local_url = frappe.db.get_value("File", filedoc, "file_url")
 		frappe.db.set_value("File", filedoc, "file_url", web_url)
 
-		# Frappe points identical uploads at one file on disk, keep it until
-		# every File using it has moved to SharePoint
-		if not frappe.db.exists("File", {"file_url": local_url, "name": ("!=", filedoc)}):
+		# Only drop the local copy once the new link is committed, a rollback
+		# would otherwise leave the File pointing at a deleted path
+		frappe.db.after_commit.add(lambda: self.remove_unreferenced_file(local_url, filepath))
+
+	def remove_unreferenced_file(self, local_url, filepath):
+		'''
+			Frappe points identical uploads at one file on disk, keep it until
+			every File using it has moved to SharePoint
+		'''
+		if not frappe.db.exists("File", {"file_url": local_url}):
 			self.remove_file(filepath)
 
 	def remove_file(self, filepath):

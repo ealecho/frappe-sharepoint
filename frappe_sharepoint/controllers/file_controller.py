@@ -36,14 +36,16 @@ def is_syncable(doc):
 	)
 
 
-def enqueue_upload(doc):
-	filepath = get_file_path(doc)
+def enqueue_upload(doc, log_missing=True):
+	filepath = get_file_path(doc, log_missing)
 
 	if filepath:
-		# Enqueue upload to background
+		# Enqueue upload to background, one pending job per File
 		frappe.enqueue(
 			"frappe_sharepoint.utils.sharepoint.trigger_sharepoint_upload",
 			queue="long",
+			job_id=f"sharepoint_upload::{doc.name}",
+			deduplicate=True,
 			doctype=doc.attached_to_doctype,
 			docname=doc.attached_to_name,
 			filepath=filepath,
@@ -75,23 +77,25 @@ def retry_pending_uploads():
 			"creation": ("between", [add_to_date(now, days=-RETRY_WINDOW_DAYS), add_to_date(now, minutes=-15)]),
 		},
 		pluck="name",
-		limit=100
+		order_by="creation asc"
 	)
 
 	for name in files:
 		doc = frappe.get_doc("File", name)
 		if is_syncable(doc):
-			enqueue_upload(doc)
+			# Files missing on disk can never succeed, skip them quietly
+			enqueue_upload(doc, log_missing=False)
 
 
-def get_file_path(doc):
+def get_file_path(doc, log_missing=True):
 	"""
 	Construct complete file path from File doc
 	"""
 	try:
 		filepath = os.path.abspath(doc.get_full_path())
 		if not os.path.exists(filepath):
-			frappe.log_error("File path construction error", f"{doc.name}: {filepath} not found")
+			if log_missing:
+				frappe.log_error("File path construction error", f"{doc.name}: {filepath} not found")
 			return None
 		return filepath
 	except Exception as e:
