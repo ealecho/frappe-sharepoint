@@ -98,7 +98,7 @@ bench restart
      - `Module/DocType/Document`: Creates hierarchical folders
      - `Flat`: Uploads all files to root folder
 
-   - **Excluded Document Types**: Attachments of these document types stay on the Frappe server and are never sent to SharePoint. Data Import, Bank Statement Import, Prepared Report, Letter Head, Package Import, Repost Item Valuation, Import Supplier Invoice and User Font are always excluded, because Frappe reads their files back from disk. Add your own import tools and template doctypes here.
+   - **Excluded Document Types**: Attachments of these document types stay on the Frappe server and are never sent to SharePoint. Data Import, Bank Statement Import, Prepared Report, Letter Head, Package Import, Repost Item Valuation, Import Supplier Invoice, User Font and Communication (emails) are always excluded, because Frappe reads their files back from disk. Add your own import tools and template doctypes here.
 
    Files uploaded through an **Attach** field, on the document or in one of its child tables, are moved too and the field is pointed at the SharePoint URL. If the document was not saved yet when the upload ran, this happens on the next hourly retry. Files in **Attach Image** fields are copied to SharePoint but kept on the server, since a SharePoint link needs a login and would not render as an image.
 

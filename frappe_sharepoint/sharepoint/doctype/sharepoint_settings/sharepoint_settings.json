@@ -150,7 +150,7 @@
    "fieldtype": "Table",
    "label": "Excluded Document Types",
    "options": "SharePoint Excluded DocType",
-   "description": "Attachments of these document types stay on the Frappe server and are not sent to SharePoint. Add any document type whose files your apps read back from the server, e.g. custom import tools or templates. Data Import, Bank Statement Import, Prepared Report, Letter Head, Package Import, Repost Item Valuation, Import Supplier Invoice and User Font are always excluded."
+   "description": "Attachments of these document types stay on the Frappe server and are not sent to SharePoint. Add any document type whose files your apps read back from the server, e.g. custom import tools or templates. Data Import, Bank Statement Import, Prepared Report, Letter Head, Package Import, Repost Item Valuation, Import Supplier Invoice, User Font and Communication (emails) are always excluded."
   },
   {
    "depends_on": "eval: doc.enable_file_sync == 1 && doc.folder_structure != 'Flat'",
@@ -186,7 +186,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-20 18:00:00.000000",
+ "modified": "2026-09-20 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "SharePoint",
  "name": "SharePoint Settings",
