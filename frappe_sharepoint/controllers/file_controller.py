@@ -12,6 +12,8 @@ ALWAYS_EXCLUDED_DOCTYPES = (
 	"Data Import", "Bank Statement Import", "Prepared Report", "Letter Head",
 	"Package Import", "Repost Item Valuation", "Import Supplier Invoice", "User Font",
 	"Communication",
+	# The import batch's mapping CSV is read back when the batch runs
+	"SharePoint Import Batch",
 )
 
 

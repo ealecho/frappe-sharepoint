@@ -1,0 +1,85 @@
+{
+ "actions": [],
+ "creation": "2026-10-05 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "document_type",
+  "document_name",
+  "folder",
+  "file_name",
+  "status",
+  "message",
+  "sharepoint_url"
+ ],
+ "fields": [
+  {
+   "fieldname": "document_type",
+   "fieldtype": "Link",
+   "options": "DocType",
+   "label": "Document Type",
+   "in_list_view": 1,
+   "columns": 2,
+   "read_only": 1
+  },
+  {
+   "fieldname": "document_name",
+   "fieldtype": "Dynamic Link",
+   "options": "document_type",
+   "label": "Document",
+   "in_list_view": 1,
+   "columns": 2,
+   "read_only": 1
+  },
+  {
+   "fieldname": "folder",
+   "fieldtype": "Data",
+   "label": "Folder",
+   "read_only": 1
+  },
+  {
+   "fieldname": "file_name",
+   "fieldtype": "Data",
+   "label": "File Name",
+   "in_list_view": 1,
+   "columns": 3,
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1,
+   "options": "Pending\nReady\nAttached\nAlready Attached\nDocument Not Found\nFile Not Found\nNo File Listed\nFailed"
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Small Text",
+   "label": "Message",
+   "in_list_view": 1,
+   "columns": 2,
+   "read_only": 1
+  },
+  {
+   "fieldname": "sharepoint_url",
+   "fieldtype": "Small Text",
+   "label": "SharePoint URL",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-05 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "SharePoint",
+ "name": "SharePoint Import Batch Row",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

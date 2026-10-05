@@ -125,6 +125,17 @@ Once configured, the app will automatically:
 
 Characters SharePoint does not allow in names (`" * : < > ? / \ |`) are replaced with `-`, so a document named `ACC-SINV/2025/0001` gets the folder `ACC-SINV-2025-0001`.
 
+### Importing existing attachments (e.g. from Xero)
+
+Historical attachments that already live in SharePoint can be attached to their documents in bulk with **SharePoint Import Batch**, without passing through the Frappe server:
+
+1. Upload the exported files to a folder in the document library, e.g. `SmartOps Xero Archive/files/invoices/...`, keeping the exporter's folder layout.
+2. Prepare a CSV with one row per file: document ID, folder (e.g. `/files/invoices`), file name. An optional **Document Type** column allows mixed lists; otherwise the batch's default document type is used. Header names are detected automatically, so Xero export CSVs work as they are.
+3. Create a batch, attach the CSV, set the archive folder, save, then click **Dry Run**. The results table shows what would happen per row: Ready, Document Not Found, File Not Found, No File Listed.
+4. Click **Run**. Each file is copied inside SharePoint into the document's folder (following the folder structure settings) and attached to the document with its SharePoint link. Rows already attached are skipped, so a batch can be re-run safely.
+
+Batches run in the background; the form refreshes when they finish.
+
 ### Folder Structure Examples
 
 **Company/Module/DocType/Document:**
