@@ -12,7 +12,7 @@ app_license = "MIT"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/frappe_sharepoint/css/frappe_sharepoint.css"
-app_include_js = "/assets/frappe_sharepoint/js/frappe_sharepoint.js"
+app_include_js = "frappe_sharepoint.bundle.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/frappe_sharepoint/css/frappe_sharepoint.css"
