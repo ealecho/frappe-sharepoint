@@ -25,6 +25,11 @@
   "replace_file_link",
   "folder_structure",
   "excluded_doctypes",
+  "archive_section",
+  "archive_folder_path",
+  "archive_folder_id",
+  "column_break_archive",
+  "archive_drive_id",
   "folder_mapping_section",
   "company_folders",
   "default_company_folder",
@@ -153,6 +158,40 @@
    "description": "Attachments of these document types stay on the Frappe server and are not sent to SharePoint. Add any document type whose files your apps read back from the server, e.g. custom import tools or templates. Data Import, Bank Statement Import, Prepared Report, Letter Head, Package Import, Repost Item Valuation, Import Supplier Invoice, User Font and Communication (emails) are always excluded."
   },
   {
+   "depends_on": "eval: doc.enable_file_sync == 1",
+   "fieldname": "archive_section",
+   "fieldtype": "Section Break",
+   "label": "Attachment Archive",
+   "description": "Where exported attachments (e.g. from Xero) are kept in SharePoint. Used as the default source for SharePoint Import Batches. Pick it with SharePoint > Browse Archive Folder."
+  },
+  {
+   "depends_on": "eval: doc.enable_file_sync == 1",
+   "fieldname": "archive_folder_path",
+   "fieldtype": "Data",
+   "label": "Archive Folder",
+   "read_only": 1,
+   "description": "e.g. SmartOps Xero Archive. Each import row's folder column is looked up inside it"
+  },
+  {
+   "fieldname": "archive_folder_id",
+   "fieldtype": "Data",
+   "label": "Archive Folder ID",
+   "hidden": 1
+  },
+  {
+   "depends_on": "eval: doc.enable_file_sync == 1",
+   "fieldname": "column_break_archive",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval: doc.enable_file_sync == 1",
+   "fieldname": "archive_drive_id",
+   "fieldtype": "Data",
+   "label": "Archive Drive ID",
+   "read_only": 1,
+   "description": "Document library that holds the archive"
+  },
+  {
    "depends_on": "eval: doc.enable_file_sync == 1 && doc.folder_structure != 'Flat'",
    "fieldname": "folder_mapping_section",
    "fieldtype": "Section Break",
@@ -186,7 +225,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-20 19:00:00.000000",
+ "modified": "2026-10-05 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "SharePoint",
  "name": "SharePoint Settings",

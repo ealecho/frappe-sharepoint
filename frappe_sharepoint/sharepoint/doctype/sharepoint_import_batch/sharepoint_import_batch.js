@@ -2,8 +2,38 @@
 // For license information, please see license.txt
 
 frappe.ui.form.on('SharePoint Import Batch', {
+	onload(frm) {
+		// New batches start from the archive configured in SharePoint Settings
+		if (frm.is_new() && !frm.doc.source_folder) {
+			frappe.db.get_doc('SharePoint Settings').then((s) => {
+				if (s.archive_folder_path) {
+					frm.set_value({
+						source_folder: s.archive_folder_path,
+						source_folder_id: s.archive_folder_id,
+						source_drive_id: s.archive_drive_id || s.sharepoint_drive_id,
+					});
+				}
+			});
+		}
+	},
+
 	refresh(frm) {
 		frm.set_intro('');
+		if (!['Queued', 'Running'].includes(frm.doc.status)) {
+			frm.add_custom_button(__('Browse Folder'), () => {
+				frappe_sharepoint_picker.pick_folder({
+					title: __('Select Archive Folder'),
+					drive_id: frm.doc.source_drive_id || null,
+					folder_id: frm.doc.source_folder_id || null,
+					on_select(folder) {
+						frm.set_value({source_folder: folder.path, source_folder_id: folder.id, source_drive_id: folder.drive_id});
+					},
+				});
+			});
+		}
+		if (!frm.doc.source_folder) {
+			frm.set_intro(__('No archive folder set here or in SharePoint Settings. Use Browse Folder.'), 'orange');
+		}
 		if (['Queued', 'Running'].includes(frm.doc.status)) {
 			frm.set_intro(__('Processing in the background. This page refreshes when it finishes.'), 'blue');
 		} else if (!frm.is_new()) {

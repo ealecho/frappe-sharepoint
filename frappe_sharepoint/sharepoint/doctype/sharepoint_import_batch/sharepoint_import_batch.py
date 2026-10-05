@@ -32,6 +32,20 @@ class SharePointImportBatch(Document):
 	def validate(self):
 		self.source_folder = (self.source_folder or "").strip().strip("/")
 
+	def get_source(self):
+		"""
+		Archive location: the batch's own, else the one in SharePoint Settings.
+		Returns dict(drive_id, folder_id, path); folder_id wins over path when set
+		"""
+		settings = frappe.get_single(SETTINGS)
+		if self.source_folder or self.source_folder_id:
+			return {"drive_id": self.source_drive_id or settings.sharepoint_drive_id,
+				"folder_id": self.source_folder_id, "path": self.source_folder}
+		if settings.archive_folder_path or settings.archive_folder_id:
+			return {"drive_id": settings.archive_drive_id or settings.sharepoint_drive_id,
+				"folder_id": settings.archive_folder_id, "path": settings.archive_folder_path}
+		frappe.throw(_("No archive folder is set on this batch or in SharePoint Settings. Use Browse Folder to pick one."))
+
 	@frappe.whitelist()
 	def dry_run(self):
 		self.enqueue_processing(dry_run=True)
@@ -47,6 +61,7 @@ class SharePointImportBatch(Document):
 		from frappe_sharepoint.controllers.file_controller import is_sync_enabled
 		if not dry_run and not is_sync_enabled():
 			frappe.throw(_("SharePoint file sync is not enabled in SharePoint Settings"))
+		self.get_source()
 
 		self.db_set({"status": "Queued", "error": None})
 		frappe.enqueue(
@@ -185,7 +200,8 @@ class ArchiveImporter:
 		self.settings = frappe.get_single(SETTINGS)
 		self.graph = self.settings.graph_api_url
 		self.dest_drive = self.settings.sharepoint_drive_id
-		self.source_drive = batch.source_drive_id or self.dest_drive
+		self.source = batch.get_source()
+		self.source_drive = self.source["drive_id"]
 		self._headers = None
 		self._folder_cache = {}
 
@@ -223,7 +239,7 @@ class ArchiveImporter:
 		except Exception as e:
 			return done("Failed", str(e)[:300])
 		if not source:
-			return done("File Not Found", f"{self.batch.source_folder}/{row['folder']}/{row['file_name']}")
+			return done("File Not Found", f"{self.source['path']}/{row['folder']}/{row['file_name']}")
 
 		if dry_run:
 			return done("Ready")
@@ -255,8 +271,12 @@ class ArchiveImporter:
 
 	def get_source_item(self, row):
 		"""Drive item of the archive file, or None when it does not exist"""
-		path = "/".join(p for p in (self.batch.source_folder, row["folder"], row["file_name"]) if p)
-		url = f"{self.graph}/drives/{self.source_drive}/root:/{quote(path)}"
+		rel = "/".join(p for p in (row["folder"], row["file_name"]) if p)
+		if self.source["folder_id"]:
+			# By id: keeps working if the archive folder is renamed or moved
+			url = f"{self.graph}/drives/{self.source_drive}/items/{self.source['folder_id']}:/{quote(rel)}"
+		else:
+			url = f"{self.graph}/drives/{self.source_drive}/root:/{quote(self.source['path'] + '/' + rel)}"
 		response = make_request("GET", url, self.headers(), None)
 		if response.status_code == 404:
 			return None
