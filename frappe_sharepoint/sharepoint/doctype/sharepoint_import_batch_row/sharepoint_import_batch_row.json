@@ -16,8 +16,7 @@
  "fields": [
   {
    "fieldname": "document_type",
-   "fieldtype": "Link",
-   "options": "DocType",
+   "fieldtype": "Data",
    "label": "Document Type",
    "in_list_view": 1,
    "columns": 2,
@@ -25,8 +24,7 @@
   },
   {
    "fieldname": "document_name",
-   "fieldtype": "Dynamic Link",
-   "options": "document_type",
+   "fieldtype": "Data",
    "label": "Document",
    "in_list_view": 1,
    "columns": 2,
@@ -73,7 +71,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-10-05 10:00:00.000000",
+ "modified": "2026-10-05 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "SharePoint",
  "name": "SharePoint Import Batch Row",
