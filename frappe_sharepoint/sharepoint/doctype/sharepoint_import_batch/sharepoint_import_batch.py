@@ -5,6 +5,7 @@ import csv
 import os
 import re
 import time
+from datetime import timedelta
 from urllib.parse import quote, unquote
 
 import frappe
@@ -14,6 +15,7 @@ from frappe.model.document import Document
 from frappe.utils import now_datetime
 
 from frappe_sharepoint.utils import get_request_header, make_request
+from frappe_sharepoint.utils import xero_matching
 from frappe_sharepoint.utils.sharepoint import SETTINGS, SharePoint, sanitize_name
 
 # Header names accepted for each mapping column, matched case-insensitively
@@ -22,6 +24,7 @@ COLUMN_ALIASES = {
 	"document_name": ("id", "name", "document", "docname", "document id", "document name"),
 	"folder": ("attachmentfolder", "attachment folder", "folder"),
 	"file_name": ("attachmentfilenames", "attachment filenames", "attachment filename", "filename", "file name", "file", "attachment"),
+	"confidence": ("confidence",),
 }
 
 COPY_POLL_SECONDS = 1
@@ -53,6 +56,26 @@ class SharePointImportBatch(Document):
 	@frappe.whitelist()
 	def run(self):
 		self.enqueue_processing(dry_run=False)
+
+	@frappe.whitelist()
+	def generate_mapping(self):
+		if self.status in ("Queued", "Running"):
+			frappe.throw(_("This batch is already being processed"))
+		if not self.xero_export_file:
+			frappe.throw(_("Attach the Xero data export first"))
+		if not self.match_document_types:
+			frappe.throw(_("Choose at least one document type to match against"))
+
+		self.db_set({"status": "Queued", "error": None})
+		frappe.enqueue(
+			"frappe_sharepoint.sharepoint.doctype.sharepoint_import_batch.sharepoint_import_batch.generate_mapping_job",
+			queue="long",
+			timeout=-1,
+			job_id=f"sharepoint_import_generate::{self.name}",
+			deduplicate=True,
+			enqueue_after_commit=True,
+			batch_name=self.name,
+		)
 
 	def enqueue_processing(self, dry_run):
 		if self.status in ("Queued", "Running"):
@@ -106,6 +129,7 @@ class SharePointImportBatch(Document):
 					"document_name": get("document_name"),
 					"folder": get("folder").strip("/"),
 					"file_name": get("file_name"),
+					"confidence": get("confidence"),
 				})
 
 		if not rows:
@@ -173,6 +197,7 @@ def process_batch(batch_name, dry_run):
 			"file_not_found": counts.get("File Not Found", 0),
 			"no_file_listed": counts.get("No File Listed", 0),
 			"failed": counts.get("Failed", 0),
+			"skipped": counts.get("Skipped", 0),
 			"status": "Dry Run Complete" if dry_run else ("Completed with Errors" if errors else "Completed"),
 			"error": None,
 		})
@@ -183,6 +208,58 @@ def process_batch(batch_name, dry_run):
 	except Exception as e:
 		frappe.db.rollback()
 		frappe.log_error("SharePoint Import Batch Error", frappe.get_traceback())
+		frappe.db.set_value("SharePoint Import Batch", batch_name, {"status": "Failed", "error": str(e)[:500]})
+		frappe.db.commit()
+
+	frappe.publish_realtime("sharepoint_import_batch_done", {"name": batch_name}, doctype="SharePoint Import Batch", docname=batch_name)
+
+
+def generate_mapping_job(batch_name):
+	"""Background job: match the Xero export against SmartOps documents and attach the result as the mapping file"""
+	batch = frappe.get_doc("SharePoint Import Batch", batch_name)
+	batch.db_set({"status": "Running", "last_run": now_datetime(), "last_run_type": "Generate Mapping"})
+	frappe.db.commit()
+
+	try:
+		export = frappe.get_doc("File", {"file_url": batch.xero_export_file})
+		xero_docs = xero_matching.read_xero_export(export.get_full_path())
+		if not xero_docs:
+			frappe.throw(_("The Xero export has no rows with attachments"))
+
+		dates = [x["date"] for x in xero_docs.values()]
+		tolerance = int(batch.match_date_tolerance or 0)
+		date_from, date_to = min(dates) - timedelta(days=tolerance), max(dates) + timedelta(days=tolerance)
+
+		smartops_docs = []
+		for row in batch.match_document_types:
+			smartops_docs += xero_matching.load_smartops_documents(row.document_type, batch.match_company, date_from, date_to)
+
+		rows = xero_matching.match(xero_docs, smartops_docs, tolerance)
+		counts = xero_matching.summarize(rows)
+
+		file_name = f"{frappe.scrub(batch.name)}-mapping.csv"
+		path = frappe.get_site_path("private", "files", file_name)
+		xero_matching.write_csv(rows, path)
+		with open(path, "rb") as f:
+			mapping = frappe.get_doc({
+				"doctype": "File", "file_name": file_name, "is_private": 1,
+				"attached_to_doctype": "SharePoint Import Batch", "attached_to_name": batch.name,
+				"attached_to_field": "mapping_file", "content": f.read(),
+			})
+		os.remove(path)
+		mapping.insert(ignore_permissions=True)
+
+		summary = (f"{len(xero_docs)} Xero documents, {len(rows)} files, matched against {len(smartops_docs)} SmartOps documents.\n"
+			+ "\n".join(f"{k}: {v}" for k, v in sorted(counts.items())))
+		batch.reload()
+		batch.update({"mapping_file": mapping.file_url, "generated_summary": summary, "status": "Draft", "error": None})
+		batch.flags.ignore_permissions = True
+		batch.save()
+		frappe.db.commit()
+
+	except Exception as e:
+		frappe.db.rollback()
+		frappe.log_error("SharePoint Import Generate Mapping Error", frappe.get_traceback())
 		frappe.db.set_value("SharePoint Import Batch", batch_name, {"status": "Failed", "error": str(e)[:500]})
 		frappe.db.commit()
 
@@ -222,6 +299,9 @@ class ArchiveImporter:
 
 		if not row["file_name"]:
 			return done("No File Listed", _("Row {0} has no file name").format(row["line"]))
+
+		if row.get("confidence") not in xero_matching.IMPORTABLE_CONFIDENCE:
+			return done("Skipped", _("Confidence is '{0}'. Change it to Confirmed once checked").format(row["confidence"]))
 
 		if not row["document_type"] or not frappe.db.exists("DocType", row["document_type"]):
 			return done("Document Not Found", _("Unknown document type {0}").format(row["document_type"]))

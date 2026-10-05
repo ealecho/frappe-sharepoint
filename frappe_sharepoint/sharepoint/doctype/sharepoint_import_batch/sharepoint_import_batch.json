@@ -15,6 +15,13 @@
   "column_break_2",
   "source_drive_id",
   "source_folder_id",
+  "generate_section",
+  "xero_export_file",
+  "match_document_types",
+  "column_break_gen",
+  "match_company",
+  "match_date_tolerance",
+  "generated_summary",
   "summary_section",
   "total_rows",
   "attached",
@@ -25,6 +32,7 @@
   "file_not_found",
   "no_file_listed",
   "failed",
+  "skipped",
   "run_section",
   "last_run",
   "last_run_type",
@@ -59,8 +67,8 @@
    "fieldname": "mapping_file",
    "fieldtype": "Attach",
    "label": "Mapping File (CSV)",
-   "reqd": 1,
-   "description": "Columns: document ID, attachment folder, file name. An optional Document Type column allows mixed lists. Header names are detected automatically."
+   "reqd": 0,
+   "description": "Columns: document ID, attachment folder, file name. Optional Document Type and Confidence columns. Header names are detected automatically. Leave empty and use Generate Mapping if you have no list yet."
   },
   {
    "fieldname": "default_document_type",
@@ -99,6 +107,50 @@
    "fieldtype": "Data",
    "label": "Archive Folder ID",
    "hidden": 1
+  },
+  {
+   "fieldname": "generate_section",
+   "fieldtype": "Section Break",
+   "label": "Generate Mapping from Xero Export",
+   "collapsible": 1,
+   "description": "No mapping list yet? Attach the Xero data export and click SharePoint > Generate Mapping. Documents are matched on date, amount and company, with the contact name and reference as tie-breakers. The result becomes this batch's Mapping File, with a Confidence column: Exact rows are imported, Review and No match rows are skipped until you change their Confidence to Confirmed."
+  },
+  {
+   "fieldname": "xero_export_file",
+   "fieldtype": "Attach",
+   "label": "Xero Data Export (CSV)",
+   "description": "The line-level export with Date, Contact.Name, Total, AttachmentFolder, AttachmentFilenames and the Xero ID columns"
+  },
+  {
+   "fieldname": "match_document_types",
+   "fieldtype": "Table MultiSelect",
+   "options": "SharePoint Import Document Type",
+   "label": "Match Against Document Types",
+   "description": "e.g. Expense Claim, Journal Entry, Purchase Invoice, Payment Entry"
+  },
+  {
+   "fieldname": "column_break_gen",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "match_company",
+   "fieldtype": "Link",
+   "options": "Company",
+   "label": "Company",
+   "description": "The Xero organisation this export came from. Only documents of this company are considered"
+  },
+  {
+   "fieldname": "match_date_tolerance",
+   "fieldtype": "Int",
+   "label": "Date Tolerance (Days)",
+   "default": "0",
+   "description": "0 = same day. Use 1 or 2 if posting dates were shifted during migration"
+  },
+  {
+   "fieldname": "generated_summary",
+   "fieldtype": "Small Text",
+   "label": "Generation Result",
+   "read_only": 1
   },
   {
    "fieldname": "summary_section",
@@ -158,6 +210,12 @@
    "read_only": 1
   },
   {
+   "fieldname": "skipped",
+   "fieldtype": "Int",
+   "label": "Skipped (Needs Review)",
+   "read_only": 1
+  },
+  {
    "fieldname": "run_section",
    "fieldtype": "Section Break",
    "label": "Run"
@@ -200,7 +258,7 @@
  "index_web_pages_for_search": 1,
  "istable": 0,
  "links": [],
- "modified": "2026-10-05 20:00:00.000000",
+ "modified": "2026-10-05 22:00:00.000000",
  "modified_by": "Administrator",
  "module": "SharePoint",
  "name": "SharePoint Import Batch",

@@ -31,12 +31,25 @@ frappe.ui.form.on('SharePoint Import Batch', {
 				});
 			});
 		}
+		if (frm.doc.generated_summary && frm.doc.mapping_file) {
+			frm.set_intro(__('Mapping generated. Download it from the Mapping File field, fix any Review rows (set Confidence to Confirmed), re-attach if changed, then Dry Run.'), 'blue');
+		}
 		if (!frm.doc.source_folder) {
 			frm.set_intro(__('No archive folder set here or in SharePoint Settings. Use Browse Folder.'), 'orange');
 		}
 		if (['Queued', 'Running'].includes(frm.doc.status)) {
 			frm.set_intro(__('Processing in the background. This page refreshes when it finishes.'), 'blue');
 		} else if (!frm.is_new()) {
+			frm.add_custom_button(__('Generate Mapping'), () => {
+				if (frm.is_dirty()) {
+					frappe.msgprint(__('Please save the batch first'));
+					return;
+				}
+				frappe.confirm(
+					__('Match the Xero export against the selected document types and replace this batch\'s Mapping File with the result?'),
+					() => frappe.call({method: 'generate_mapping', doc: frm.doc, freeze: true, callback: () => frm.reload_doc()})
+				);
+			}, __('SharePoint'));
 			frm.add_custom_button(__('Dry Run'), () => run_batch(frm, 'dry_run'));
 			frm.add_custom_button(__('Run'), () => {
 				frappe.confirm(
