@@ -41,6 +41,56 @@ def is_remote_url(file_url):
 	return (file_url or "").startswith(("http://", "https://"))
 
 
+@frappe.whitelist()
+def list_folders(drive_id=None, folder_id=None):
+	"""
+	Folders inside a SharePoint folder, for the folder picker. Browsing by item
+	id means renamed folders keep working. folder_id None means the drive root
+	"""
+	frappe.only_for("System Manager")
+	settings = frappe.get_single(SETTINGS)
+	drive_id = drive_id or settings.sharepoint_drive_id
+	headers = get_request_header(settings)
+	base = f"{settings.graph_api_url}/drives/{drive_id}"
+	item_url = f"{base}/items/{folder_id}" if folder_id else f"{base}/root"
+
+	current = make_request("GET", item_url, headers, None)
+	if not current.ok:
+		frappe.throw(_("Could not open the folder: {0}").format(current.text[:200]))
+	current = current.json()
+	parent_path = (current.get("parentReference") or {}).get("path", "")
+	current_path = drive_item_path(parent_path, current.get("name")) if folder_id else ""
+
+	folders, url = [], f"{item_url}/children?$filter=folder ne null&$top=200&$select=id,name,folder,parentReference,webUrl"
+	while url:
+		response = make_request("GET", url, headers, None)
+		if not response.ok:
+			frappe.throw(_("Could not list folders: {0}").format(response.text[:200]))
+		data = response.json()
+		for item in data.get("value", []):
+			if "folder" in item:
+				folders.append({
+					"id": item["id"], "name": item["name"],
+					"path": drive_item_path(current_path, item["name"]) if folder_id else item["name"],
+					"childCount": item["folder"].get("childCount", 0), "webUrl": item.get("webUrl"),
+				})
+		url = data.get("@odata.nextLink")
+
+	return {
+		"drive_id": drive_id,
+		"current": {"id": current.get("id") if folder_id else None, "name": current.get("name") if folder_id else "", "path": current_path},
+		"parent_id": (current.get("parentReference") or {}).get("id") if folder_id else None,
+		"folders": sorted(folders, key=lambda f: f["name"].lower()),
+	}
+
+
+def drive_item_path(parent_path, name):
+	"""'/drives/x/root:/A/B' + 'C' -> 'A/B/C' (decoded, no leading slash)"""
+	from urllib.parse import unquote as _unquote
+	rel = parent_path.split("root:", 1)[1] if "root:" in (parent_path or "") else ""
+	return "/".join(p for p in (_unquote(rel).strip("/"), name) if p)
+
+
 def upload_document_bundle(doctype, docname, files):
 	"""
 	Upload multiple files (document PDF + attachments) to SharePoint

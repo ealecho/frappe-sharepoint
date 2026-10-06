@@ -125,6 +125,25 @@ Once configured, the app will automatically:
 
 Characters SharePoint does not allow in names (`" * : < > ? / \ |`) are replaced with `-`, so a document named `ACC-SINV/2025/0001` gets the folder `ACC-SINV-2025-0001`.
 
+### Importing existing attachments (e.g. from Xero)
+
+Historical attachments that already live in SharePoint can be attached to their documents in bulk with **SharePoint Import Batch**, without passing through the Frappe server:
+
+1. Upload the exported files to a folder in the document library, e.g. `SmartOps Xero Archive/files/invoices/...`, keeping the exporter's folder layout. In SharePoint Settings, click **SharePoint > Browse Archive Folder** and select it once; the folder is remembered by its SharePoint ID, so renaming or moving it later does not break imports. A batch can point at a different folder with its own **Browse Folder** button.
+2. Prepare a CSV with one row per file: document ID, folder (e.g. `/files/invoices`), file name. An optional **Document Type** column allows mixed lists; otherwise the batch's default document type is used. Header names are detected automatically, so Xero export CSVs work as they are.
+3. Create a batch, attach the CSV, set the archive folder, save, then click **Dry Run**. The results table shows what would happen per row: Ready, Document Not Found, File Not Found, No File Listed.
+4. Click **Run**. Each file is copied inside SharePoint into the document's folder (following the folder structure settings) and attached to the document with its SharePoint link. Rows already attached are skipped, so a batch can be re-run safely.
+
+**No mapping list yet?** Attach the Xero data export (the line-level CSV with `Date`, `Contact.Name`, `Total`, `AttachmentFolder`, `AttachmentFilenames` and the Xero ID columns), choose the document types and company to match against, and click **SharePoint > Generate Mapping**. Documents are matched on date, amount and company, with the contact name and reference text as tie-breakers. The generated CSV becomes the batch's Mapping File and carries a **Confidence** column:
+
+- `Exact` / `Exact (name differs)` / `Exact (shared bill)`: the document(s) are certain, imported as is (a shared bill is one Xero bill that was migrated as one document per line item; the file goes on each)
+- `Review`: several documents fit, listed one row each; keep the right row and set its Confidence to `Confirmed`
+- `No match`: no document fits; the file stays in the archive
+
+Review and No match rows are skipped by Run until their Confidence is `Confirmed`. Tested against a hand-made expense claim mapping of 235 rows: every automatic match was correct, 2 needed review, 2 had no match.
+
+Batches run in the background; the form refreshes when they finish.
+
 ### Folder Structure Examples
 
 **Company/Module/DocType/Document:**

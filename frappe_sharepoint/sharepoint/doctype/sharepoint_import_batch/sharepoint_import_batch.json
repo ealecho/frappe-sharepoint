@@ -1,0 +1,295 @@
+{
+ "actions": [],
+ "creation": "2026-10-05 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "status",
+  "column_break_1",
+  "mapping_file",
+  "default_document_type",
+  "source_section",
+  "source_folder",
+  "column_break_2",
+  "source_drive_id",
+  "source_folder_id",
+  "generate_section",
+  "xero_export_file",
+  "match_document_types",
+  "column_break_gen",
+  "match_company",
+  "match_date_tolerance",
+  "generated_summary",
+  "summary_section",
+  "total_rows",
+  "attached",
+  "already_attached",
+  "ready",
+  "column_break_3",
+  "document_not_found",
+  "file_not_found",
+  "no_file_listed",
+  "failed",
+  "skipped",
+  "not_matched",
+  "run_section",
+  "last_run",
+  "last_run_type",
+  "column_break_4",
+  "error",
+  "results_section",
+  "results"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nQueued\nDry Run Complete\nRunning\nCompleted\nCompleted with Errors\nFailed",
+   "default": "Draft",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "mapping_file",
+   "fieldtype": "Attach",
+   "label": "Mapping File (CSV)",
+   "reqd": 0,
+   "description": "Columns: document ID, attachment folder, file name. Optional Document Type and Confidence columns. Header names are detected automatically. Leave empty and use Generate Mapping if you have no list yet."
+  },
+  {
+   "fieldname": "default_document_type",
+   "fieldtype": "Link",
+   "options": "DocType",
+   "label": "Default Document Type",
+   "reqd": 1,
+   "description": "Used for rows without a Document Type column, e.g. Expense Claim"
+  },
+  {
+   "fieldname": "source_section",
+   "fieldtype": "Section Break",
+   "label": "Source Files (leave blank to use SharePoint Settings)"
+  },
+  {
+   "fieldname": "source_folder",
+   "fieldtype": "Data",
+   "label": "Archive Folder",
+   "reqd": 0,
+   "description": "Where the exported files are. Defaults to the Attachment Archive in SharePoint Settings; use Browse Folder to pick another. Each row's folder column is appended, e.g. <archive>/files/invoices/<file name>",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "source_drive_id",
+   "fieldtype": "Data",
+   "label": "Archive Drive ID",
+   "description": "Set by Browse Folder",
+   "read_only": 1
+  },
+  {
+   "fieldname": "source_folder_id",
+   "fieldtype": "Data",
+   "label": "Archive Folder ID",
+   "hidden": 1
+  },
+  {
+   "fieldname": "generate_section",
+   "fieldtype": "Section Break",
+   "label": "Generate Mapping from Xero Export",
+   "collapsible": 1,
+   "description": "No mapping list yet? Attach the Xero data export and click SharePoint > Generate Mapping. Documents are matched on date, amount and company, with the contact name and reference as tie-breakers. The result becomes this batch's Mapping File, with a Confidence column: Exact rows are imported, Review and No match rows are skipped until you change their Confidence to Confirmed."
+  },
+  {
+   "fieldname": "xero_export_file",
+   "fieldtype": "Attach",
+   "label": "Xero Data Export (CSV)",
+   "description": "The line-level export with Date, Contact.Name, Total, AttachmentFolder, AttachmentFilenames and the Xero ID columns"
+  },
+  {
+   "fieldname": "match_document_types",
+   "fieldtype": "Table MultiSelect",
+   "options": "SharePoint Import Document Type",
+   "label": "Match Against Document Types",
+   "description": "e.g. Expense Claim, Journal Entry, Purchase Invoice, Payment Entry"
+  },
+  {
+   "fieldname": "column_break_gen",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "match_company",
+   "fieldtype": "Link",
+   "options": "Company",
+   "label": "Company",
+   "description": "The Xero organisation this export came from. Only documents of this company are considered"
+  },
+  {
+   "fieldname": "match_date_tolerance",
+   "fieldtype": "Int",
+   "label": "Date Tolerance (Days)",
+   "default": "0",
+   "description": "0 = same day. Use 1 or 2 if posting dates were shifted during migration"
+  },
+  {
+   "fieldname": "generated_summary",
+   "fieldtype": "Small Text",
+   "label": "Generation Result",
+   "read_only": 1
+  },
+  {
+   "fieldname": "summary_section",
+   "fieldtype": "Section Break",
+   "label": "Summary"
+  },
+  {
+   "fieldname": "total_rows",
+   "fieldtype": "Int",
+   "label": "Rows",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attached",
+   "fieldtype": "Int",
+   "label": "Attached",
+   "read_only": 1
+  },
+  {
+   "fieldname": "already_attached",
+   "fieldtype": "Int",
+   "label": "Already Attached",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ready",
+   "fieldtype": "Int",
+   "label": "Ready (Dry Run)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "document_not_found",
+   "fieldtype": "Int",
+   "label": "Document Not Found",
+   "read_only": 1
+  },
+  {
+   "fieldname": "file_not_found",
+   "fieldtype": "Int",
+   "label": "File Not Found",
+   "read_only": 1
+  },
+  {
+   "fieldname": "no_file_listed",
+   "fieldtype": "Int",
+   "label": "No File Listed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "failed",
+   "fieldtype": "Int",
+   "label": "Failed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "skipped",
+   "fieldtype": "Int",
+   "label": "Skipped (Needs Review)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "not_matched",
+   "fieldtype": "Int",
+   "label": "No Match (Not Imported)",
+   "read_only": 1,
+   "description": "Files whose Xero document matched no SmartOps document. Listed in the mapping file, not in the results table"
+  },
+  {
+   "fieldname": "run_section",
+   "fieldtype": "Section Break",
+   "label": "Run"
+  },
+  {
+   "fieldname": "last_run",
+   "fieldtype": "Datetime",
+   "label": "Last Run",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_run_type",
+   "fieldtype": "Data",
+   "label": "Last Run Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Small Text",
+   "label": "Error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "results_section",
+   "fieldtype": "Section Break",
+   "label": "Results"
+  },
+  {
+   "fieldname": "results",
+   "fieldtype": "Table",
+   "options": "SharePoint Import Batch Row",
+   "label": "Results",
+   "read_only": 1,
+   "description": "One row per file that was imported, needs attention or failed. No match rows are only counted; see the mapping file for them"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 0,
+ "links": [],
+ "modified": "2026-10-06 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "SharePoint",
+ "name": "SharePoint Import Batch",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "format:SP-IMP-{#####}",
+ "title_field": "title",
+ "track_changes": 1
+}

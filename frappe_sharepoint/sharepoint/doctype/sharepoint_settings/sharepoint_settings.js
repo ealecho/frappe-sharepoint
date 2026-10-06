@@ -36,6 +36,25 @@ frappe.ui.form.on('SharePoint Settings', {
 			}, __('SharePoint'));
 		}
 
+		// Add Browse Archive Folder button (default source for import batches)
+		if (frm.doc.enable_file_sync && frm.doc.sharepoint_drive_id) {
+			frm.add_custom_button(__('Browse Archive Folder'), function() {
+				frappe_sharepoint_picker.pick_folder({
+					title: __('Select Attachment Archive Folder'),
+					drive_id: frm.doc.archive_drive_id || frm.doc.sharepoint_drive_id,
+					folder_id: frm.doc.archive_folder_id || null,
+					on_select(folder) {
+						frm.set_value({
+							archive_folder_path: folder.path,
+							archive_folder_id: folder.id,
+							archive_drive_id: folder.drive_id,
+						});
+						frappe.show_alert({message: __('Archive folder set to {0}. Save to keep it.', [folder.path]), indicator: 'green'}, 7);
+					},
+				});
+			}, __('SharePoint'));
+		}
+		
 		// Add Browse SharePoint Sites button (requires Sites.Read.All permission)
 		if (frm.doc.enable_file_sync && frm.doc.tenant_id && frm.doc.client_id && frm.doc.client_secret) {
 			frm.add_custom_button(__('Browse SharePoint Sites'), function() {
