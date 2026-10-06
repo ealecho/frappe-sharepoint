@@ -33,6 +33,7 @@
   "no_file_listed",
   "failed",
   "skipped",
+  "not_matched",
   "run_section",
   "last_run",
   "last_run_type",
@@ -216,6 +217,13 @@
    "read_only": 1
   },
   {
+   "fieldname": "not_matched",
+   "fieldtype": "Int",
+   "label": "No Match (Not Imported)",
+   "read_only": 1,
+   "description": "Files whose Xero document matched no SmartOps document. Listed in the mapping file, not in the results table"
+  },
+  {
    "fieldname": "run_section",
    "fieldtype": "Section Break",
    "label": "Run"
@@ -252,13 +260,14 @@
    "fieldtype": "Table",
    "options": "SharePoint Import Batch Row",
    "label": "Results",
-   "read_only": 1
+   "read_only": 1,
+   "description": "One row per file that was imported, needs attention or failed. No match rows are only counted; see the mapping file for them"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 0,
  "links": [],
- "modified": "2026-10-05 22:00:00.000000",
+ "modified": "2026-10-06 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "SharePoint",
  "name": "SharePoint Import Batch",

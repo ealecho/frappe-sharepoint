@@ -185,7 +185,9 @@ def process_batch(batch_name, dry_run):
 		batch.reload()
 		batch.set("results", [])
 		for r in results:
-			batch.append("results", r)
+			# Unmatched Xero files are counted only, the mapping file lists them
+			if r["status"] != "No Match":
+				batch.append("results", r)
 
 		errors = counts.get("Failed", 0) + counts.get("Document Not Found", 0) + counts.get("File Not Found", 0)
 		batch.update({
@@ -198,6 +200,7 @@ def process_batch(batch_name, dry_run):
 			"no_file_listed": counts.get("No File Listed", 0),
 			"failed": counts.get("Failed", 0),
 			"skipped": counts.get("Skipped", 0),
+			"not_matched": counts.get("No Match", 0),
 			"status": "Dry Run Complete" if dry_run else ("Completed with Errors" if errors else "Completed"),
 			"error": None,
 		})
@@ -299,6 +302,9 @@ class ArchiveImporter:
 
 		if not row["file_name"]:
 			return done("No File Listed", _("Row {0} has no file name").format(row["line"]))
+
+		if row.get("confidence") == xero_matching.CONFIDENCE_NO_MATCH:
+			return done("No Match")
 
 		if row.get("confidence") not in xero_matching.IMPORTABLE_CONFIDENCE:
 			return done("Skipped", _("Confidence is '{0}'. Change it to Confirmed once checked").format(row["confidence"]))
