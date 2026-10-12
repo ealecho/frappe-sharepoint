@@ -478,7 +478,10 @@ class ArchiveImporter:
 				# Occasional non-JSON body from the monitor endpoint, keep polling
 				data = {}
 			if data.get("status") == "completed":
-				return self.get_item(f"{self.graph}/drives/{self.dest_drive}/items/{data['resourceId']}")
+				if data.get("resourceId"):
+					return self.get_item(f"{self.graph}/drives/{self.dest_drive}/items/{data['resourceId']}")
+				# Completed without an id (seen occasionally), find the copy by name
+				return self.get_item(f"{self.graph}/drives/{self.dest_drive}/items/{target_folder_id}:/{quote(sanitize_name(file_name))}")
 			if data.get("status") == "failed":
 				raise Exception(f"Copy failed: {data.get('error', {}).get('message', data)}")
 			time.sleep(COPY_POLL_SECONDS)
