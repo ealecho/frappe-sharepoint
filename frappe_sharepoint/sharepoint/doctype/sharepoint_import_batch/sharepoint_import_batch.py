@@ -284,6 +284,7 @@ class ArchiveImporter:
 		self.source_drive = self.source["drive_id"]
 		self._headers = None
 		self._folder_cache = {}
+		self._listing_cache = {}
 
 	def headers(self):
 		if not self._headers:
@@ -356,7 +357,48 @@ class ArchiveImporter:
 		}, "file_url")
 
 	def get_source_item(self, row):
-		"""Drive item of the archive file, or None when it does not exist"""
+		"""
+		Drive item of the archive file, or None when it does not exist. The
+		archive sub-folder is listed once and cached, one request per 200 files
+		instead of one per file
+		"""
+		listing = self.list_source_folder(row["folder"])
+		if listing is not None:
+			return listing.get(row["file_name"])
+		return self.lookup_source_item(row)
+
+	def list_source_folder(self, folder):
+		"""{file name: drive item} for one archive sub-folder, None if it cannot be listed"""
+		if folder in self._listing_cache:
+			return self._listing_cache[folder]
+
+		rel = quote(folder) if folder else ""
+		if self.source["folder_id"]:
+			base = f"{self.graph}/drives/{self.source_drive}/items/{self.source['folder_id']}"
+			url = f"{base}:/{rel}:/children" if rel else f"{base}/children"
+		else:
+			path = "/".join(p for p in (self.source["path"], folder) if p)
+			url = f"{self.graph}/drives/{self.source_drive}/root:/{quote(path)}:/children"
+		url += "?$select=id,name,file&$top=200"
+
+		items = {}
+		while url:
+			response = make_request("GET", url, self.headers(), None)
+			if not response.ok:
+				frappe.logger().warning(f"[SharePoint Import] Could not list {folder}: {response.status_code}, falling back to per-file lookups")
+				items = None
+				break
+			data = response.json()
+			for item in data.get("value", []):
+				if "file" in item:
+					items[item["name"]] = item
+			url = data.get("@odata.nextLink")
+
+		self._listing_cache[folder] = items
+		return items
+
+	def lookup_source_item(self, row):
+		"""Single-file lookup, used when the folder listing is unavailable"""
 		rel = "/".join(p for p in (row["folder"], row["file_name"]) if p)
 		if self.source["folder_id"]:
 			# By id: keeps working if the archive folder is renamed or moved
