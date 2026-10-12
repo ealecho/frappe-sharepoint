@@ -29,6 +29,8 @@ COLUMN_ALIASES = {
 
 COPY_POLL_SECONDS = 0.3
 COPY_TIMEOUT_SECONDS = 120
+# Azure access tokens live about an hour; long runs must renew them
+TOKEN_MAX_AGE_SECONDS = 45 * 60
 
 
 class SharePointImportBatch(Document):
@@ -290,14 +292,28 @@ class ArchiveImporter:
 		self.source = batch.get_source()
 		self.source_drive = self.source["drive_id"]
 		self._headers = None
+		self._token_time = 0
 		self._folder_cache = {}
 		self._path_cache = {}
 		self._listing_cache = {}
 
-	def headers(self):
-		if not self._headers:
+	def auth_headers(self, refresh=False):
+		"""Authorization header, renewed before the token expires or when asked to"""
+		if refresh or not self._headers or time.time() - self._token_time > TOKEN_MAX_AGE_SECONDS:
 			self._headers = get_request_header(self.settings)
-		return dict(self._headers, **{"Content-Type": "application/json"})
+			self._token_time = time.time()
+		return dict(self._headers)
+
+	def headers(self):
+		return dict(self.auth_headers(), **{"Content-Type": "application/json"})
+
+	def request(self, method, url, body=None):
+		"""Graph request that renews the token and retries once on 401"""
+		response = make_request(method, url, self.headers(), body)
+		if response.status_code == 401:
+			self.auth_headers(refresh=True)
+			response = make_request(method, url, self.headers(), body)
+		return response
 
 	def process_row(self, row, dry_run):
 		result = {
@@ -391,7 +407,7 @@ class ArchiveImporter:
 
 		items = {}
 		while url:
-			response = make_request("GET", url, self.headers(), None)
+			response = self.request("GET", url)
 			if not response.ok:
 				frappe.logger().warning(f"[SharePoint Import] Could not list {folder}: {response.status_code}, falling back to per-file lookups")
 				items = None
@@ -413,7 +429,7 @@ class ArchiveImporter:
 			url = f"{self.graph}/drives/{self.source_drive}/items/{self.source['folder_id']}:/{quote(rel)}"
 		else:
 			url = f"{self.graph}/drives/{self.source_drive}/root:/{quote(self.source['path'] + '/' + rel)}"
-		response = make_request("GET", url, self.headers(), None)
+		response = self.request("GET", url)
 		if response.status_code == 404:
 			return None
 		if not response.ok:
@@ -425,6 +441,8 @@ class ArchiveImporter:
 		key = (row["document_type"], row["document_name"])
 		if key not in self._folder_cache:
 			sharepoint = SharePoint(doctype=row["document_type"], docname=row["document_name"], folder_cache=self._path_cache)
+			# Share this run's token instead of requesting one per document
+			sharepoint._headers = self.auth_headers()
 			self._folder_cache[key] = sharepoint.build_folder_structure()
 		return self._folder_cache[key]
 
@@ -439,7 +457,7 @@ class ArchiveImporter:
 			"parentReference": {"driveId": self.dest_drive, "id": target_folder_id},
 			"name": sanitize_name(file_name),
 		}
-		response = make_request("POST", url, self.headers(), body)
+		response = self.request("POST", url, body)
 		if not response.ok:
 			raise Exception(f"Copy failed ({response.status_code}): {response.text[:200]}")
 
@@ -464,7 +482,7 @@ class ArchiveImporter:
 		raise Exception("Copy timed out")
 
 	def get_item(self, url):
-		response = make_request("GET", url, self.headers(), None)
+		response = self.request("GET", url)
 		if not response.ok:
 			raise Exception(f"Could not read copied item ({response.status_code})")
 		return response.json()
