@@ -206,6 +206,7 @@ class SharePoint(object):
 
 		self.base_url = f'{self.settings.graph_api_url}/drives/{self.drive_id}'
 		self._headers = None
+		self.folder_cache = kwargs.get("folder_cache")
 
 	def get_headers(self, content_type="application/json"):
 		'''
@@ -325,11 +326,19 @@ class SharePoint(object):
 		segments += self.get_folder_segments()
 		frappe.logger().info(f"[Build Folders] Target path: {'/'.join(segments) or '(drive root)'}")
 
-		current_folder_id = "root"
+		# Callers importing many files share a {path: folder id} cache so the
+		# company/module/doctype levels are resolved once, not per document
+		cache = self.folder_cache if self.folder_cache is not None else {}
+		current_folder_id, prefix = "root", ""
 		for segment in segments:
+			prefix = f"{prefix}/{segment}" if prefix else segment
+			if prefix in cache:
+				current_folder_id = cache[prefix]
+				continue
 			current_folder_id = self.get_or_create_folder(current_folder_id, segment)
 			if not current_folder_id:
 				return None
+			cache[prefix] = current_folder_id
 
 		return current_folder_id
 

@@ -27,7 +27,7 @@ COLUMN_ALIASES = {
 	"confidence": ("confidence",),
 }
 
-COPY_POLL_SECONDS = 1
+COPY_POLL_SECONDS = 0.3
 COPY_TIMEOUT_SECONDS = 120
 
 
@@ -56,6 +56,13 @@ class SharePointImportBatch(Document):
 	@frappe.whitelist()
 	def run(self):
 		self.enqueue_processing(dry_run=False)
+
+	@frappe.whitelist()
+	def reset(self):
+		"""Clear a Queued/Running status left behind by a job that died (e.g. a deploy restarted the workers)"""
+		if self.status not in ("Queued", "Running"):
+			frappe.throw(_("This batch is not running"))
+		self.db_set({"status": "Draft", "error": None})
 
 	@frappe.whitelist()
 	def generate_mapping(self):
@@ -284,6 +291,7 @@ class ArchiveImporter:
 		self.source_drive = self.source["drive_id"]
 		self._headers = None
 		self._folder_cache = {}
+		self._path_cache = {}
 		self._listing_cache = {}
 
 	def headers(self):
@@ -416,7 +424,7 @@ class ArchiveImporter:
 		"""Document folder id in the destination library, built with the app's folder rules"""
 		key = (row["document_type"], row["document_name"])
 		if key not in self._folder_cache:
-			sharepoint = SharePoint(doctype=row["document_type"], docname=row["document_name"])
+			sharepoint = SharePoint(doctype=row["document_type"], docname=row["document_name"], folder_cache=self._path_cache)
 			self._folder_cache[key] = sharepoint.build_folder_structure()
 		return self._folder_cache[key]
 

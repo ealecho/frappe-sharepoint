@@ -38,7 +38,13 @@ frappe.ui.form.on('SharePoint Import Batch', {
 			frm.set_intro(__('No archive folder set here or in SharePoint Settings. Use Browse Folder.'), 'orange');
 		}
 		if (['Queued', 'Running'].includes(frm.doc.status)) {
-			frm.set_intro(__('Processing in the background. This page refreshes when it finishes.'), 'blue');
+			frm.set_intro(__('Processing in the background. This page refreshes when it finishes. Progress: Settings > Background Jobs.'), 'blue');
+			frm.add_custom_button(__('Reset Stuck Batch'), () => {
+				frappe.confirm(
+					__('Only do this if the background job is no longer running (check Background Jobs). Rows already attached are kept and skipped on the next run. Reset?'),
+					() => frappe.call({method: 'reset', doc: frm.doc, callback: () => frm.reload_doc()})
+				);
+			});
 		} else if (!frm.is_new()) {
 			frm.add_custom_button(__('Generate Mapping'), () => {
 				if (frm.is_dirty()) {
