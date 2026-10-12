@@ -472,7 +472,11 @@ class ArchiveImporter:
 			if status.status_code in (301, 302, 303):
 				# Finished copies redirect to the new item
 				return self.get_item(status.headers.get("Location"))
-			data = status.json() if status.content else {}
+			try:
+				data = status.json() if status.content else {}
+			except ValueError:
+				# Occasional non-JSON body from the monitor endpoint, keep polling
+				data = {}
 			if data.get("status") == "completed":
 				return self.get_item(f"{self.graph}/drives/{self.dest_drive}/items/{data['resourceId']}")
 			if data.get("status") == "failed":
